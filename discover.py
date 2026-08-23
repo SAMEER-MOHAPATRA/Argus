@@ -133,6 +133,47 @@ def extract_location(entry, source_label: str) -> str:
     return "Not specified"
 
 
+def parse_title(title: str, source_label: str) -> tuple[str, str]:
+    """Split a feed title into (title, company).
+
+    Google News and WWR bake the employer into the title; the job boards that
+    serve their own feeds leave it out. Return an empty company when the title
+    does not fit its feed's shape — the caller falls back to entry.author.
+    """
+    src = source_label.lower()
+
+    if src.startswith("linkedin"):
+        # "<Company> hiring <Title> in <Location> - LinkedIn[ India]"
+        head = title.split(" - LinkedIn")[0]
+        company, sep, rest = head.partition(" hiring ")
+        if sep and " in " in rest:
+            # ponytail: last " in " is the location split — a title ending in
+            # "... in Training" with no location would lose its tail
+            return rest.rsplit(" in ", 1)[0].strip(), company.strip()
+
+        # the other shape: "<Title> at <Company> — <Location> | LinkedIn Jobs"
+        left = head.split(" — ")[0]
+        if left != head and " at " in left:
+            role, _, company = left.rpartition(" at ")
+            return role.strip(), company.strip()
+
+    elif src.startswith("naukri"):
+        # "<Title> - <Locations> - <Company> - <N to M> years... - Naukri.com"
+        parts = title.split(" - ")
+        # the tail is always 3 segments (company, experience, Naukri.com) after
+        # one location segment, so a title needs at least 5 to have a name left
+        if len(parts) >= 5 and parts[-1].endswith("Naukri.com"):
+            return " - ".join(parts[:-4]).strip(), parts[-3].strip()
+
+    elif src.startswith("wwr"):
+        # "<Company>: <Title>"
+        company, sep, rest = title.partition(": ")
+        if sep:
+            return rest.strip(), company.strip()
+
+    return title, ""
+
+
 # ─── Feed Processing ────────────────────────────────────────────────────
 
 
@@ -179,8 +220,10 @@ def process_feed(
                 continue
 
             # sanitize everything feed-controlled — the store holds plain text
-            title = sanitize_html(getattr(entry, "title", ""))
-            company = sanitize_html(getattr(entry, "author", "")) or "Unknown"
+            title, company = parse_title(
+                sanitize_html(getattr(entry, "title", "")), label,
+            )
+            company = company or sanitize_html(getattr(entry, "author", "")) or "Unknown"
             description = sanitize_html(getattr(entry, "summary", ""))
 
             title_lower = title.lower()

@@ -67,6 +67,38 @@ def test_suite() -> None:
     assert discover.sanitize_html("<br/>Remote\n\n  (EU)") == "Remote (EU)"
     assert discover.sanitize_html("") == ""
 
+    # --- parse_title: Google News and WWR titles carry the employer, feeds do not ---
+    assert discover.parse_title(
+        "Wipro hiring BUSINESS ANALYST L4 in Pune Division, Maharashtra, India - LinkedIn India",
+        "LinkedIn | BA India",
+    ) == ("BUSINESS ANALYST L4", "Wipro")
+    assert discover.parse_title(
+        "Optum hiring Data Analyst - Remote in Eden Prairie, MN - LinkedIn", "LinkedIn | DA Remote",
+    ) == ("Data Analyst - Remote", "Optum")
+    # LinkedIn's other shape: "<Title> at <Company> — <Location> | LinkedIn Jobs"
+    assert discover.parse_title(
+        "Analytics Engineer at Dojo — London, England, United Kingdom | LinkedIn Jobs - LinkedIn",
+        "LinkedIn | Analytics Eng",
+    ) == ("Analytics Engineer", "Dojo")
+    assert discover.parse_title(
+        "Data Analyst - Business (Remote) at Quik Hire Staffing — Philippines | LinkedIn Jobs - LinkedIn",
+        "LinkedIn | DA Remote",
+    ) == ("Data Analyst - Business (Remote)", "Quik Hire Staffing")
+    assert discover.parse_title(
+        "Support Engineer - Level 2 - Bengaluru - Virtusa - 0 to 1 years of experience - Naukri.com",
+        "Naukri | DA India",
+    ) == ("Support Engineer - Level 2", "Virtusa")
+    assert discover.parse_title(
+        "DCX: Home-Based Marketing Data Analyst", "WWR | All",
+    ) == ("Home-Based Marketing Data Analyst", "DCX")
+    # a title that does not fit its feed's shape is returned untouched, with no company
+    assert discover.parse_title("Data Analyst", "Himalayas | Remote") == ("Data Analyst", "")
+    assert discover.parse_title("Data Analyst", "LinkedIn | DA India") == ("Data Analyst", "")
+    assert discover.parse_title("Analyst - Naukri.com", "Naukri | DA India") == ("Analyst - Naukri.com", "")
+    assert discover.parse_title(
+        "Data Analyst - Lenskart - 0 to 5 years of experience - Naukri.com", "Naukri | DA India",
+    ) == ("Data Analyst - Lenskart - 0 to 5 years of experience - Naukri.com", "")
+
     JOBS = [
         {
             "id": "evil1",
