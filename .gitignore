@@ -16,7 +16,10 @@ jobs_found.json
 dashboard.html
 .claude/skills/
 scratchpad/
-graphify-out/
+# code graph: keep the report, JSON, HTML and manifest; skip tool state
+graphify-out/cache/
+graphify-out/20*/
+graphify-out/.graphify_*
 # local planning notes; config.personal.toml lives here and must stay private
 plans/
 # files parked by the cleanup; delete the folder when you are sure
