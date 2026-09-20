@@ -69,6 +69,11 @@ def set_status(job_id: str, status: str) -> bool:
     return True
 
 
+def clear_new() -> None:
+    """Drop every row still 'new'. Applications stay. Used when the profile changes."""
+    _save([j for j in load_jobs() if get_status(j) != "new"])
+
+
 def this_week(rows: list[dict], key: str, fmt: str = DATE_FMT, days: int = 7) -> list[dict]:
     """Filter already-loaded rows to those dated within the last `days`."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)

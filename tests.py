@@ -6,10 +6,14 @@ Run: python tests.py
 import tempfile
 import tomllib
 from datetime import datetime, timedelta, timezone
+from html import escape
 from pathlib import Path
 from types import SimpleNamespace
 
+import config
+import dashboard
 import discover
+import cv
 import scoring
 import setup
 import store
@@ -19,6 +23,7 @@ from scoring import rank, score_job
 # the module-global path is the persistence seam: point it at a tmp dir
 _tmp = Path(tempfile.mkdtemp())
 store.CSV_PATH = _tmp / "jobs.csv"
+config.CONFIG_PATH = _tmp / "config.toml"
 discover.SUMMARY_PATH = _tmp / "summary.txt"
 discover.DIGEST_PATH = _tmp / "digest.md"
 
@@ -253,6 +258,75 @@ def test_suite() -> None:
     store.add_jobs(window)
     page = render()
     assert page.index("data-id='hi'") < page.index("data-id='lo_new'") < page.index("data-id='lo_old'")
+
+    # --- profile: the five-line answer from the prompt is parsed exactly ---
+    answers = cv.parse_answers(
+        "Sure! Here you go:\ntitles: data analyst, business analyst\ncountry: IN\n"
+        "remote: true\nskills: sql, python, power bi\nlocations: Pune\n"
+    )
+    assert answers == {
+        "titles": ["data analyst", "business analyst"], "country": "IN", "remote": True,
+        "skills": ["sql", "python", "power bi"], "locations": ["pune"],
+    }
+    assert cv.parse_answers("Data Analyst\nPune, India") is None
+    # a CV falls back to the keyword extractor: titles by frequency, skills by
+    # word boundary, country from a place name, cities as locations
+    cv_text = (
+        "Priya Sharma — Pune, India\n"
+        "Data Analyst, Acme (2023–now): built SQL and Power BI dashboards in Python.\n"
+        "Data Analyst intern, Globex (2022): Excel reporting, Tableau.\n"
+        "Business Analyst, Initech (2021): requirements, Excel.\n"
+        "Skills: SQL, Python, Power BI, Excel, Tableau, Git. Fluent in R and C.\n"
+    )
+    p = cv.extract_profile(cv_text)
+    assert p["titles"][:2] == ["data analyst", "business analyst"]
+    assert p["country"] == "IN" and p["remote"] is True
+    assert {"sql", "python", "power bi", "excel", "tableau", "git"} <= set(p["skills"])
+    assert "r" not in p["skills"] and "c" not in p["skills"]  # single letters are noise
+    assert p["locations"] == ["pune"]
+    assert cv.extract_profile("lorem ipsum")["titles"] == []
+    # either text shape goes through one door
+    assert cv.read(cv_text)["titles"][0] == "data analyst"
+    assert cv.read("titles: nurse\ncountry: GB")["titles"] == ["nurse"]
+    # the prompt on the page is the one in the docs
+    assert cv.PROMPT.strip() in Path("docs/profile-prompt.md").read_text(encoding="utf-8")
+
+    # --- setup.read_profile inverts build_config, so the edit form shows the current answers ---
+    fields = {"titles": ["data analyst", "business analyst"], "country": "IN", "remote": True,
+              "skills": ["sql", "python"], "locations": ["pune"]}
+    assert setup.read_profile(tomllib.loads(setup.build_config(**fields))) == fields
+    onsite = {"titles": ["nurse"], "country": "GB", "remote": False, "skills": [], "locations": []}
+    assert setup.read_profile(tomllib.loads(setup.build_config(**onsite))) == onsite
+    # the shipped example is not a profile yet; a setup.py file is
+    assert setup.is_profile(setup.build_config(**onsite)) is True
+    assert setup.is_profile(Path("config.toml").read_text(encoding="utf-8")) is False
+
+    # --- store.clear_new drops unseen rows and keeps every application ---
+    store.clear_new()
+    assert {j["id"] for j in store.load_jobs()} == {"j1"}  # j1 was marked applied above
+
+    # --- dashboard.save_profile: writes config, reloads weights, resets the store ---
+    store.add_jobs([full_job("stale", 1, title="Software Engineer")])
+    dashboard.save_profile(fields, refresh=False)
+    written = tomllib.loads(config.CONFIG_PATH.read_text(encoding="utf-8"))
+    assert written["discovery"]["role_keywords"] == ["data analyst", "business analyst"]
+    assert config.ROLE_KEYWORDS == ["data analyst", "business analyst"]
+    assert scoring.TITLE_POINTS == {"data analyst": 30, "business analyst": 25}
+    assert scoring.LOCATION_POINTS == {"remote": 20, "pune": 10, "india": 10}
+    assert [j["id"] for j in store.load_jobs()] == ["j1"]
+    assert dashboard.current_profile() == fields
+    try:
+        dashboard.save_profile({**fields, "titles": []}, refresh=False)
+        assert False, "empty titles accepted"
+    except ValueError:
+        pass
+
+    # --- the page: one paste box, the prompt to copy, the current profile ---
+    page = render()
+    assert "<textarea" in page and "Start watching" in page
+    assert escape(cv.PROMPT.strip()[:40]) in page
+    assert "data analyst" in page  # current titles shown
+    assert "/profile" in page and "/status" in page
 
     print("OK: tests passed")
 

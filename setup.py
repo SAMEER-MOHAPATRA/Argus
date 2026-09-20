@@ -10,6 +10,7 @@ TOML or builds a Google News URL by hand. Works from the command line too:
 
 import argparse
 import json
+import re
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -56,6 +57,9 @@ def build_config(
         raise ValueError("at least one job title is required")
     country = country.upper()
 
+    # "product manager" as a title must survive the "manager" block
+    block = [b for b in SENIORITY_BLOCK if not any(b in t for t in titles)]
+
     feeds = list(REMOTE_BOARDS) if remote else []
     for t in titles:
         feeds.append((f"LinkedIn | {t.title()}", _news_feed("linkedin.com/jobs", t, country)))
@@ -85,7 +89,7 @@ max_per_feed = 25
 # a job is kept when its title or description contains one of these
 role_keywords = {json.dumps(titles)}
 # a job is dropped when its title contains one of these
-seniority_block = {json.dumps(SENIORITY_BLOCK)}
+seniority_block = {json.dumps(block)}
 
 {feed_blocks}
 [scoring]
@@ -102,6 +106,28 @@ skill_cap = 25
 [scoring.location]
 {table(location_points)}
 """
+
+
+def is_profile(config_text: str) -> bool:
+    """True when config.toml was written from answers, not the shipped example."""
+    return "written by setup.py" in config_text[:200]
+
+
+def read_profile(cfg: dict) -> dict:
+    """The five answers behind a parsed config.toml — the inverse of build_config."""
+    d, s = cfg["discovery"], cfg["scoring"]
+    urls = [f["url"] for f in d["feeds"]]
+    codes = [m.group(1) for u in urls for m in [re.search(r"[?&]gl=([A-Z]{2})", u)] if m]
+    country = codes[0] if codes else "US"
+    boards = {url for _, url in REMOTE_BOARDS}
+    skip = {"remote", COUNTRIES.get(country, "").lower()}
+    return {
+        "titles": list(d["role_keywords"]),
+        "country": country,
+        "remote": any(u in boards for u in urls),
+        "skills": list(s["skills"]),
+        "locations": [k for k in s["location"] if k not in skip],
+    }
 
 
 if __name__ == "__main__":

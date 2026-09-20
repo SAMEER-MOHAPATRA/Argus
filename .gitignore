@@ -19,3 +19,5 @@ scratchpad/
 graphify-out/
 # local planning notes; config.personal.toml lives here and must stay private
 plans/
+# files parked by the cleanup; delete the folder when you are sure
+To Delete/

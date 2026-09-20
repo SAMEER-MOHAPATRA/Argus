@@ -1,6 +1,8 @@
 # From CV to profile
 
-Paste the block below, then your CV, into any chatbot (ChatGPT, Claude, Gemini, Copilot). Copy its answers into **Actions → Set up profile** in your Argus repo.
+Paste the block below, then your CV, into any chatbot (ChatGPT, Claude, Gemini, Copilot). Paste its five-line answer into the box on the Argus page, or type the answers into **Actions → Set up profile** in your Argus repo.
+
+The page also accepts a raw CV. A built-in keyword extractor then guesses the answers. The chatbot gives better titles for unusual roles.
 
 ---
 

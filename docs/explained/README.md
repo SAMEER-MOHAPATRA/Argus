@@ -24,7 +24,7 @@ Open questions, not yet written. Take them in any order.
 | Configuration | Why is config split across `config.toml` and `config.py`? What belongs in each? | `config.toml`, `config.py` |
 | Status tracking | What are the job states and what moves a job between them? Why is one column the whole state machine? | `store.py` — `get_status`, `set_status` |
 | Trust and sanitizing | Why is all feed text stripped to plain text before storage, and why does the dashboard escape again at render? | `discover.py` — `sanitize_html`; `dashboard.py` |
-| Scheduled runs | How does a daily run work, and where does its output go? | `refresh.bat`, `logs/last_run_summary.txt` |
+| Background runs | How does the page fetch jobs on launch and on paste, and where does the output go? | `dashboard.py` — `start_refresh`; `logs/digest.md` |
 
 ## Generated
 

@@ -8,11 +8,13 @@
 
 **Scoring** — `scoring.py`: `score_job` (title, location, capped skills, freshness) and `rank` (best first, ties newest-first). Shared by Dashboard and Digest.
 
-**Setup** — The "Set up profile" Actions form (`setup.yml`). Five answers → `setup.py` writes `config.toml`, including Google News feed URLs for LinkedIn/Naukri → commit → first discovery run. The user never edits TOML (ADR-0005).
+**Setup** — Five answers (titles, country, remote, skills, locations) → `setup.py` writes `config.toml`, including Google News feed URLs for LinkedIn/Naukri. `read_profile` inverts it; `is_profile` tells a written profile from the shipped example. Two front doors: the paste box on the Dashboard (primary, ADR-0006) and the "Set up profile" Actions form (`setup.yml`, ADR-0005). The user never edits TOML.
+
+**Profile extraction** — `cv.py` turns pasted text into the five answers. `parse_answers` reads the exact five-line reply to `cv.PROMPT` (the prompt in `docs/profile-prompt.md`, for any chatbot); `extract_profile` is the fallback for a raw CV: dictionary matches for titles, skills, country and cities. `read` tries both, in that order.
 
 **Tracking** — Recording where each `Job` stands. A single `status` column on the job row is the state machine; the dashboard's "✓ Applied" button advances it. Applied jobs leave the Digest. No separate entry point.
 
-**Dashboard** — Serves one ranked table and owns the write endpoint. Interface: `render() -> str` builds the page from the store; `serve()` runs it on port 8765 and renders fresh per request, so there is no `dashboard.html` artifact to go stale. `APPLIED_ROUTE` and the `Handler` that serves it live in the same module as the JS that calls it. Entry point: `dashboard.py`.
+**Dashboard** — The local page: paste box, current profile, ranked table. Owns every write endpoint: `POST /profile` (pasted text or form fields → `save_profile`), `POST /refresh`, `POST /applied/<id>`; `GET /status` reports the background fetch. `render() -> str` fills `page.html` from the store; `serve()` runs a `ThreadingHTTPServer` on port 8765, renders fresh per request, and starts a fetch on launch when a profile is set. `save_profile` writes `config.toml`, calls `config.reload()`, copies the weights onto `scoring`, clears unseen jobs (`store.clear_new`) and runs `discover.py` as a subprocess so it reads the new file. Entry points: `Argus.bat` → `dashboard.py`.
 
 ## Core entities
 
@@ -21,9 +23,9 @@
 
 ## Architecture
 
-- **store.py** — plain module functions (`load_jobs`, `add_jobs`, `get_status`, `set_status`, `this_week`, `age_label`) that own the CSV schema and date formats. `dashboard.py` HTML-escapes at render; `discover.py` neutralises `|` in Markdown cells.
-- **config.toml + config.py** — All user preference (feeds, role keywords, seniority blocklist, `[scoring]` weights) in `config.toml`. `config.py` loads it once at import and exports typed constants. Upstream ships a neutral **example profile**; it must run green unedited. `setup.py` regenerates the whole file. Freshness buckets stay in `score_job` — they are not a preference.
-- **Seams** — Module globals, reassigned by `tests.py`: `store.CSV_PATH` (persistence), `discover.SUMMARY_PATH` / `DIGEST_PATH` (digest), and the `scoring.*_POINTS` / `SKILL_*` weights. No protocols or adapters.
+- **store.py** — plain module functions (`load_jobs`, `add_jobs`, `get_status`, `set_status`, `clear_new`, `this_week`, `age_label`) that own the CSV schema and date formats. `dashboard.py` HTML-escapes at render; `discover.py` neutralises `|` in Markdown cells.
+- **config.toml + config.py** — All user preference (feeds, role keywords, seniority blocklist, `[scoring]` weights) in `config.toml`. `config.py` loads it at import into typed constants; `reload()` re-reads `CONFIG_PATH` after the dashboard saves a profile. Upstream ships a neutral **example profile**; it must run green unedited. `setup.py` regenerates the whole file. Freshness buckets stay in `score_job` — they are not a preference.
+- **Seams** — Module globals, reassigned by `tests.py`: `store.CSV_PATH` (persistence), `config.CONFIG_PATH` (profile), `discover.SUMMARY_PATH` / `DIGEST_PATH` (digest), and the `scoring.*_POINTS` / `SKILL_*` weights. No protocols or adapters.
 
 ## Distribution
 

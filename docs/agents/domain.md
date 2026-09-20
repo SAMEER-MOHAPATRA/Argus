@@ -6,10 +6,10 @@ How the engineering skills should consume this repo's domain documentation when 
 
 - **`CONTEXT.md`** at the repo root — the domain glossary (Discovery, Digest, Scoring, Setup,
   Tracking, Dashboard; the `Job`/`Application` entities; module layout).
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in. Five exist:
+- **`docs/adr/`** — read ADRs that touch the area you're about to work in. Six exist:
   `0001-persistence-seam.md`, `0002-template-repo-distribution.md`,
   `0003-preferences-in-config.md`, `0004-action-commits-store.md`,
-  `0005-issue-as-ui-form-as-setup.md`.
+  `0005-issue-as-ui-form-as-setup.md`, `0006-local-page-primary.md`.
 
 If either changes shape later (a new ADR, a term added to the glossary), keep reading from the
 same two locations — no other domain doc source exists for this repo.
@@ -26,7 +26,8 @@ Single-context repo (this repo, and most repos):
     ├── 0002-template-repo-distribution.md
     ├── 0003-preferences-in-config.md
     ├── 0004-action-commits-store.md
-    └── 0005-issue-as-ui-form-as-setup.md
+    ├── 0005-issue-as-ui-form-as-setup.md
+    └── 0006-local-page-primary.md
 ```
 
 This repo has no `CONTEXT-MAP.md` and is not a monorepo — there's exactly one `CONTEXT.md`, at the
