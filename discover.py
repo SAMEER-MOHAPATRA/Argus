@@ -1,6 +1,8 @@
 """
-discover.py — scrapes DA/BA/analytics jobs from RSS feeds.
-Adds new listings to jobs_found.csv; skips anything already seen.
+discover.py — pulls jobs from the RSS feeds in config.toml.
+Adds new listings to jobs_found.csv; skips anything already seen. Writes the
+digest (logs/digest.md, the ranked issue body) and the run comment
+(logs/last_run_summary.txt, only when there is news).
 
 Usage:
     python discover.py
@@ -26,6 +28,7 @@ import feedparser
 
 import store
 from config import FEEDS, MAX_PER_FEED, ROLE_KEYWORDS, SENIORITY_BLOCK
+from scoring import rank
 
 # ─── Configuration ───────────────────────────────────────────────────────
 
@@ -34,7 +37,8 @@ DEFAULT_DAYS = 7
 # ponytail: 8s socket timeout prevents feedparser from hanging on dead hosts
 socket.setdefaulttimeout(8)
 
-SUMMARY_PATH = Path("logs/last_run_summary.txt")
+SUMMARY_PATH = Path("logs/last_run_summary.txt")   # the issue comment
+DIGEST_PATH = Path("logs/digest.md")                # the issue body
 
 log = logging.getLogger("discover")
 
@@ -111,8 +115,8 @@ def extract_job_id(url: str) -> str:
     return slug
 
 
-def extract_location(entry, source_label: str) -> str:
-    """Extract location from an RSS entry with source-aware fallbacks."""
+def extract_location(entry, feed_url: str) -> str:
+    """Extract location from an RSS entry; remote-only boards default to Remote."""
     loc = getattr(entry, "location", None)
     if loc and str(loc).strip():
         return str(loc).strip()
@@ -126,23 +130,20 @@ def extract_location(entry, source_label: str) -> str:
         ):
             return term
 
-    source_lower = source_label.lower()
-    if any(x in source_lower for x in ("remoteok", "wwr", "weworkremotely", "himalayas")):
+    if any(host in feed_url for host in ("weworkremotely.com", "himalayas.app")):
         return "Remote"
 
     return "Not specified"
 
 
-def parse_title(title: str, source_label: str) -> tuple[str, str]:
+def parse_title(title: str, feed_url: str) -> tuple[str, str]:
     """Split a feed title into (title, company).
 
-    Google News and WWR bake the employer into the title; the job boards that
-    serve their own feeds leave it out. Return an empty company when the title
-    does not fit its feed's shape — the caller falls back to entry.author.
+    The feed URL picks the shape: Google News (site:linkedin.com, site:naukri.com)
+    and WWR bake the employer into the title; other boards leave it out. Return an
+    empty company when the title does not fit — the caller falls back to entry.author.
     """
-    src = source_label.lower()
-
-    if src.startswith("linkedin"):
+    if "linkedin.com" in feed_url:
         # "<Company> hiring <Title> in <Location> - LinkedIn[ India]"
         head = title.split(" - LinkedIn")[0]
         company, sep, rest = head.partition(" hiring ")
@@ -157,7 +158,7 @@ def parse_title(title: str, source_label: str) -> tuple[str, str]:
             role, _, company = left.rpartition(" at ")
             return role.strip(), company.strip()
 
-    elif src.startswith("naukri"):
+    elif "naukri.com" in feed_url:
         # "<Title> - <Locations> - <Company> - <N to M> years... - Naukri.com"
         parts = title.split(" - ")
         # the tail is always 3 segments (company, experience, Naukri.com) after
@@ -165,7 +166,7 @@ def parse_title(title: str, source_label: str) -> tuple[str, str]:
         if len(parts) >= 5 and parts[-1].endswith("Naukri.com"):
             return " - ".join(parts[:-4]).strip(), parts[-3].strip()
 
-    elif src.startswith("wwr"):
+    elif "weworkremotely.com" in feed_url:
         # "<Company>: <Title>"
         company, sep, rest = title.partition(": ")
         if sep:
@@ -221,7 +222,7 @@ def process_feed(
 
             # sanitize everything feed-controlled — the store holds plain text
             title, company = parse_title(
-                sanitize_html(getattr(entry, "title", "")), label,
+                sanitize_html(getattr(entry, "title", "")), url,
             )
             company = company or sanitize_html(getattr(entry, "author", "")) or "Unknown"
             description = sanitize_html(getattr(entry, "summary", ""))
@@ -239,7 +240,7 @@ def process_feed(
                 "id":          job_id,
                 "title":       title,
                 "company":     company,
-                "location":    extract_location(entry, label),
+                "location":    extract_location(entry, url),
                 "source":      label,
                 "link":        link,
                 "published":   pub_date.strftime(store.UTC_FMT),
@@ -260,43 +261,68 @@ def process_feed(
     return results, None
 
 
-# ─── Summary ─────────────────────────────────────────────────────────────
+# ─── Digest ──────────────────────────────────────────────────────────────
 
 
-def write_summary(feed_stats: list[tuple], all_jobs: list[dict], days: int) -> None:
-    """Print summary to terminal and save to logs/last_run_summary.txt."""
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    lines = [
-        f"[{ts}]  Job Discovery  |  window: last {days} days",
-        "-" * 55,
-    ]
+# GitHub issue bodies and comments cap at 65 KB; a fresh copy's first run can
+# find hundreds of jobs, so both lists are capped
+DIGEST_MAX_LINKS = 50
 
-    for label, found, error in feed_stats:
-        if error:
-            lines.append(f"  {label:<35} ERROR: {error}")
-        else:
-            lines.append(f"  {label:<35} {found:>4} new")
 
-    lines.append("-" * 55)
-
-    if all_jobs:
-        top = all_jobs[0]
-        lines.append(f"  ✅ {len(all_jobs)} new jobs → jobs_found.csv")
-        lines.append(
-            f"  🔝 Top match: {top['title']} @ {top['company']}"
-        )
-    else:
-        lines.append("  🔎 No new jobs found this run.")
-
-    lines.append("")
+def write_summary(feed_stats: list[tuple], new_jobs: list[dict]) -> None:
+    """Print the run result. Save the issue comment to SUMMARY_PATH only when there
+    is something to say (new jobs or feed errors); remove it otherwise, so a quiet
+    day sends no notification."""
+    errors = [f"- {label}: {error}" for label, _, error in feed_stats if error]
+    lines = [f"**{len(new_jobs)} new jobs** · {datetime.now():%Y-%m-%d}", ""]
+    lines += [f"- [{j['title']} @ {j['company']}]({j['link']})" for j in new_jobs[:DIGEST_MAX_LINKS]]
+    if len(new_jobs) > DIGEST_MAX_LINKS:
+        lines.append(f"- …and {len(new_jobs) - DIGEST_MAX_LINKS} more in the digest above")
+    if errors:
+        lines += ["", "Feed errors:", *errors]
     summary = "\n".join(lines)
-
     print(summary)
 
-    # Save to file for later review (scheduled runs)
     SUMMARY_PATH.parent.mkdir(exist_ok=True)
-    SUMMARY_PATH.write_text(summary, encoding="utf-8")
-    log.debug("Summary written to %s", SUMMARY_PATH)
+    if new_jobs or errors:
+        SUMMARY_PATH.write_text(summary, encoding="utf-8")
+    else:
+        SUMMARY_PATH.unlink(missing_ok=True)
+
+
+def _cell(text: str) -> str:
+    # a pipe or newline in feed text would break the Markdown table
+    return text.replace("|", "/").replace("\n", " ").strip()
+
+
+def write_digest(ranked: list[dict], feed_stats: list[tuple], days: int, new_count: int) -> None:
+    """Save the issue body to DIGEST_PATH: every open job in the window, best first."""
+    lines = [
+        f"Updated {datetime.now(timezone.utc):{store.UTC_FMT}} · **{new_count} new today** · "
+        f"{len(ranked)} job{'s' if len(ranked) != 1 else ''} in the last {days} days",
+        "",
+    ]
+    if ranked:
+        lines += ["| Score | Role | Company | Location | Posted |", "|--:|---|---|---|---|"]
+        for j in ranked[:DIGEST_MAX_LINKS]:
+            lines.append(
+                f"| {j['_score']} | [{_cell(j.get('title', ''))}]({j.get('link', '')}) | "
+                f"{_cell(j.get('company', ''))} | {_cell(j.get('location', ''))} | "
+                f"{store.age_label(j.get('published', ''))} |"
+            )
+        if len(ranked) > DIGEST_MAX_LINKS:
+            lines += ["", f"…and {len(ranked) - DIGEST_MAX_LINKS} more in `jobs_found.csv`."]
+    else:
+        lines.append("_No jobs in the window yet. Check the feed list below._")
+
+    lines += ["", "<details><summary>Feeds</summary>", "", "| Feed | New |", "|---|--:|"]
+    for label, found, error in feed_stats:
+        lines.append(f"| {_cell(label)} | {'error: ' + _cell(error) if error else found} |")
+    lines += ["", "</details>", ""]
+
+    DIGEST_PATH.parent.mkdir(exist_ok=True)
+    DIGEST_PATH.write_text("\n".join(lines), encoding="utf-8")
+    log.debug("Digest written to %s", DIGEST_PATH)
 
 
 # ─── Main ────────────────────────────────────────────────────────────────
@@ -340,12 +366,19 @@ def main(days: int, verbose: bool = False) -> None:
         store.add_jobs(all_jobs)
         log.info("Added %d new jobs", len(all_jobs))
 
-    write_summary(feed_stats, all_jobs, days)
+    write_summary(feed_stats, all_jobs)
+    # the digest shows the whole window, not just this run, so a reader who
+    # missed a day still sees the best open matches first
+    window = [
+        j for j in store.this_week(store.load_jobs(), "published", store.UTC_FMT, days=days)
+        if store.get_status(j) == "new"
+    ]
+    write_digest(rank(window), feed_stats, days, new_count=len(all_jobs))
     log.info("Job discovery complete")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="DA/BA job discovery via RSS")
+    parser = argparse.ArgumentParser(description="Job discovery via RSS feeds in config.toml")
     parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     parser.add_argument("--check", action="store_true", help="Feed health check, no writes")

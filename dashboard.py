@@ -10,228 +10,116 @@ Usage:
 
 import socket
 import webbrowser
-from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote
 
 import store
+from scoring import rank
 
 PORT = 8765
+WINDOW_DAYS = 21
 
 # the route is shared by the emitted JS and the Handler below — rename in one place
 APPLIED_ROUTE = "/applied/"
 
-# coffee palette: espresso text, mocha accent, caramel highlight, latte muted, cream bg
-_PALETTE = """:root {
-  --espresso: #3b2a20; --mocha: #6f4e37; --caramel: #b57b3f;
-  --latte: #9c8672; --cream: #f6f0e7; --card: #fffbf4; --line: #e7dccb;
-}"""
-
-# ---- points system (from resume: DA/AE profile, remote-first) ----
-# title: Data Analyst ranks highest, other target roles below
-TITLE_POINTS = [
-    ("data analyst", 30),
-    ("business analyst", 20),
-    ("analytics engineer", 20),
-]
-# location: remote first, then India
-LOCATION_POINTS = [
-    ("remote", 20), ("work from anywhere", 20), ("anywhere", 20),
-    ("india", 10),
-]
-# skills pulled from resume — +5 each, found in title or summary
-SKILL_KEYWORDS = [
-    "sql", "python", "power bi", "tableau", "excel",
-    "etl", "dax", "power query", "pandas",
-]
-SKILL_POINT, SKILL_CAP = 5, 25
-
-
-def score_job(job: dict) -> int:
-    title = job.get("title", "").lower()
-    haystack = title + " " + job.get("summary", "").lower() + " " + job.get("location", "").lower()
-    pts = 0
-    for kw, p in TITLE_POINTS:
-        if kw in title:
-            pts += p
-            break
-    for kw, p in LOCATION_POINTS:
-        if kw in haystack:
-            pts += p
-            break
-    pts += min(SKILL_CAP, sum(SKILL_POINT for kw in SKILL_KEYWORDS if kw in haystack))
-    # freshness dominates: apply fast while postings are new
-    age = datetime.now(timezone.utc) - store.parse_date(job.get("published", ""), store.UTC_FMT)
-    if age.days <= 1:
-        pts += 50
-    elif age.days <= 3:
-        pts += 40
-    elif age.days <= 7:
-        pts += 25
-    elif age.days <= 14:
-        pts += 10
-    return pts
+# one neutral palette, one accent; the table is the page
+_CSS = """:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #17181c; --muted: #6b7280;
+  --line: #e6e8ec; --accent: #2457d6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; padding: 2.5rem 1.5rem 4rem; max-width: 72rem;
+  background: var(--bg); color: var(--text);
+  font: 15px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+h1 { margin: 0; font-size: 1.35rem; font-weight: 600; letter-spacing: -.01em; }
+.muted { color: var(--muted); font-size: .85rem; }
+.stats { display: flex; flex-wrap: wrap; gap: 2.5rem; margin: 1.5rem 0 1.25rem; }
+.stat b { display: block; font-size: 1.75rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: .8rem; color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: .75rem; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { padding: .65rem .9rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th {
+  position: sticky; top: 0; background: var(--card); color: var(--muted);
+  font-weight: 500; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+}
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num { font-weight: 600; }
+td.title { font-weight: 500; }
+td.act { white-space: nowrap; text-align: right; }
+a.apply, button.mark {
+  display: inline-block; padding: .3rem .75rem; border-radius: .5rem;
+  font: 600 .8rem/1.4 inherit; cursor: pointer;
+}
+a.apply { background: var(--accent); color: #fff; text-decoration: none; }
+a.apply:hover { filter: brightness(1.1); }
+button.mark { margin-left: .35rem; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+button.mark:hover:enabled { border-color: var(--accent); color: var(--accent); }
+button.mark:disabled { opacity: .5; cursor: default; }
+tr.done td { color: var(--muted); }
+tr.done td.title { text-decoration: line-through; }
+.empty { margin: 0; padding: 3rem 1rem; text-align: center; color: var(--muted); }"""
 
 
-def _page(title: str, max_width: str, extra_css: str, body: str) -> str:
-    """Page shell: palette, head, base CSS."""
+def _build_html(ranked_jobs: list[dict], jobs_week: int, apps_week: int) -> str:
+    # escape at the render boundary — feed data is untrusted
+    rows = []
+    for j in ranked_jobs:
+        status = store.get_status(j)
+        applied = status != "new"  # anything past 'new' is applied to
+        if applied:
+            act = f"<span class='muted'>{escape(status.title())}</span>"
+        elif j.get("link"):
+            act = (
+                f"<a class='apply' href='{escape(j['link'])}' target='_blank' rel='noopener'>Apply</a>"
+                f"<button class='mark' data-id='{escape(j.get('id', ''))}'>&#10003; Applied</button>"
+            )
+        else:
+            act = "<span class='muted'>—</span>"
+        rows.append(
+            f"<tr{' class=done' if applied else ''}>"
+            f"<td class='num'>{j['_score']}</td>"
+            f"<td class='title'>{escape(j.get('title', ''))}</td>"
+            f"<td>{escape(j.get('company', ''))}</td>"
+            f"<td class='muted'>{escape(j.get('location', ''))}</td>"
+            f"<td class='muted'>{escape(j.get('source', ''))}</td>"
+            f"<td class='muted'>{store.age_label(j.get('published', ''))}</td>"
+            f"<td class='act'>{act}</td></tr>"
+        )
+    table = (
+        "<table><thead><tr><th class='num'>Score</th><th>Role</th><th>Company</th>"
+        "<th>Location</th><th>Source</th><th>Posted</th><th></th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+        if rows else
+        f"<p class='empty'>No jobs in the last {WINDOW_DAYS} days. Run <code>python discover.py</code>.</p>"
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
+<title>Argus</title>
 <style>
-{_PALETTE}
-* {{ box-sizing: border-box; }}
-body {{
-  margin: 0 auto; padding: 2.5rem 1.5rem; max-width: {max_width};
-  background: var(--cream); color: var(--espresso);
-  font: 15px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
-}}
-h1, h2 {{ color: var(--mocha); font-weight: 600; }}
-.muted {{ color: var(--latte); font-size: .85rem; }}
-.card {{
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: .75rem; padding: 1rem 1.25rem;
-}}
-{extra_css}
+{_CSS}
 </style>
 </head>
 <body>
-{body}
-</body>
-</html>"""
-
-
-_DASH_CSS = """h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
-h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin: 1.75rem 0; }
-.stat-label { margin: 0; font-size: .8rem; color: var(--latte); }
-.stat-value { margin: .2rem 0 0; font-size: 2rem; font-weight: 700; color: var(--mocha); }
-.stat-value.accent { color: var(--caramel); }
-.panels { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
-@media (min-width: 768px) { .panels { grid-template-columns: 1fr 1fr; } }
-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
-th, td { padding: .5rem .6rem; text-align: left; border-bottom: 1px solid var(--line); }
-th { color: var(--latte); font-weight: 500; }
-tr:last-child td { border-bottom: none; }
-td.num, th.num { text-align: right; color: var(--caramel); font-weight: 600; }
-a.apply {
-  display: inline-block; padding: .2rem .7rem; border-radius: .5rem;
-  background: var(--mocha); color: var(--cream); text-decoration: none;
-  font-size: .8rem; font-weight: 600;
-}
-a.apply:hover { background: var(--caramel); }
-button.mark {
-  padding: .2rem .55rem; border-radius: .5rem; cursor: pointer;
-  border: 1px solid var(--line); background: var(--cream); color: var(--mocha);
-  font: 600 .8rem/1.5 inherit;
-}
-button.mark:hover:enabled { background: var(--caramel); color: var(--cream); }
-button.mark:disabled { opacity: .5; cursor: default; }
-tr.done td { opacity: .45; }"""
-
-
-def _build_html(
-    total_jobs: int,
-    jobs_week: int,
-    feed_breakdown: list[tuple[str, int]],
-    ranked_jobs: list[dict],
-    total_apps: int,
-    apps_week: int,
-    recent_apps: list[dict],
-) -> str:
-    # escape at the render boundary — feed data is untrusted
-    feed_rows = "".join(
-        f"<tr><td>{escape(label)}</td>"
-        f"<td class='num'>{count}</td></tr>"
-        for label, count in feed_breakdown
-    )
-    app_rows = "".join(
-        f"<tr><td class='muted'>{escape(a.get('status_date', ''))}</td>"
-        f"<td>{escape(a.get('title', ''))}</td>"
-        f"<td>{escape(a.get('company', ''))}</td>"
-        f"<td>{escape(store.get_status(a).title())}</td></tr>"
-        for a in recent_apps
-    ) or "<tr><td class='muted' colspan='4'>Nothing yet — mark a job applied below.</td></tr>"
-    # the one tip worth keeping from review.py
-    pace_tip = (
-        '<p class="muted" style="margin:.75rem 0 0">Aim for 3-5 quality applications per week.</p>'
-        if apps_week < 3 else ""
-    )
-    job_rows = []
-    for j in ranked_jobs:
-        applied = store.get_status(j) != "new"  # anything past 'new' is applied to
-        job_id = j.get("id", "")
-        if applied:
-            apply_cell = f"<span class='muted'>{escape(store.get_status(j).title())}</span>"
-        elif j.get("link"):
-            apply_cell = (
-                f"<a class='apply' href='{escape(j.get('link', ''))}' target='_blank'>Apply</a> "
-                f"<button class='mark' data-id='{escape(job_id)}'>&#10003; Applied</button>"
-            )
-        else:
-            apply_cell = "<span class='muted'>—</span>"
-        job_rows.append(
-            f"<tr{' class=done' if applied else ''}>"
-            f"<td class='num'>{j['_score']}</td>"
-            f"<td>{escape(j['title'])}</td>"
-            f"<td>{escape(j.get('source', ''))}</td>"
-            f"<td class='muted'>{escape(j.get('published', ''))}</td>"
-            f"<td>{apply_cell}</td></tr>"
-        )
-    job_rows = "".join(job_rows)
-    body = f"""<h1>Argus</h1>
-<p class="muted">Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
-
+<header>
+  <h1>Argus</h1>
+  <span class="muted">Updated {datetime.now():%Y-%m-%d %H:%M}</span>
+</header>
 <div class="stats">
-  <div class="card">
-    <p class="stat-label">Total Jobs</p>
-    <p class="stat-value">{total_jobs}</p>
-  </div>
-  <div class="card">
-    <p class="stat-label">Jobs This Week</p>
-    <p class="stat-value accent">{jobs_week}</p>
-  </div>
-  <div class="card">
-    <p class="stat-label">Applications</p>
-    <p class="stat-value">{total_apps}</p>
-  </div>
-  <div class="card">
-    <p class="stat-label">Applied This Week</p>
-    <p class="stat-value accent">{apps_week}</p>
-  </div>
+  <div class="stat"><b>{len(ranked_jobs)}</b><span>Jobs · last {WINDOW_DAYS} days</span></div>
+  <div class="stat"><b>{jobs_week}</b><span>New this week</span></div>
+  <div class="stat"><b>{apps_week}</b><span>Applied this week</span></div>
 </div>
-
-<div class="panels">
-  <div class="card">
-    <h2>Jobs by Feed</h2>
-    <table>
-      <thead><tr><th>Feed</th><th class="num">Count</th></tr></thead>
-      <tbody>{feed_rows}</tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h2>Recent Applications</h2>
-    <table>
-      <thead><tr><th>Date</th><th>Title</th><th>Company</th><th>Status</th></tr></thead>
-      <tbody>{app_rows}</tbody>
-    </table>
-    {pace_tip}
-  </div>
-</div>
-
-<div class="card" style="margin-top:1.25rem">
-  <h2>All Jobs — Ranked</h2>
-  <p class="muted" style="margin:0 0 .75rem">Points: freshness (≤1d 50 / ≤3d 40 / ≤7d 25 / ≤14d 10) + title match (DA 30 / BA·AE 20) + remote 20 / India 10 + resume skills (5 each, max 25)</p>
-  <table>
-    <thead><tr><th class="num">Score</th><th>Title</th><th>Source</th><th>Published</th><th>Apply</th></tr></thead>
-    <tbody>{job_rows}</tbody>
-  </table>
-</div>
+<div class="card">{table}</div>
 <script>
 // one click, one write — the server is the only state, nothing cached client-side
 document.querySelectorAll('button.mark').forEach(b =>
@@ -243,39 +131,22 @@ document.querySelectorAll('button.mark').forEach(b =>
     else {{ b.disabled = false; b.textContent = 'failed'; }}
   }})
 );
-</script>"""
-    return _page("Argus", "64rem", _DASH_CSS, body)
+</script>
+</body>
+</html>"""
 
 
 def render() -> str:
     """Load the store and return the dashboard as an HTML string."""
     all_jobs = store.load_jobs()
-    # only show jobs published in the last 21 days
-    jobs = store.this_week(all_jobs, "published", store.UTC_FMT, days=21)
+    jobs = store.this_week(all_jobs, "published", store.UTC_FMT, days=WINDOW_DAYS)
     # applications come from the full store, not the window — an old posting you
     # applied to still counts
     apps = [j for j in all_jobs if store.get_status(j) != "new"]
-
-    jobs_week = store.this_week(jobs, "published", store.UTC_FMT)
-    apps_week = store.this_week(apps, "status_date")
-    recent_apps = sorted(apps, key=lambda a: a.get("status_date", ""), reverse=True)[:5]
-
-    feed_breakdown = Counter(j.get("source", "Unknown") for j in jobs).most_common()
-
-    for j in jobs:
-        j["_score"] = score_job(j)
-    # newest first, then stable-sort by score so ties stay newest-first
-    jobs.sort(key=lambda j: j.get("published", ""), reverse=True)
-    ranked = sorted(jobs, key=lambda j: -j["_score"])
-
     return _build_html(
-        total_jobs=len(jobs),
-        jobs_week=len(jobs_week),
-        feed_breakdown=feed_breakdown,
-        ranked_jobs=ranked,
-        total_apps=len(apps),
-        apps_week=len(apps_week),
-        recent_apps=recent_apps,
+        ranked_jobs=rank(jobs),
+        jobs_week=len(store.this_week(jobs, "published", store.UTC_FMT)),
+        apps_week=len(store.this_week(apps, "status_date")),
     )
 
 

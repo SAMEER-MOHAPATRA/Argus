@@ -81,3 +81,12 @@ def parse_date(date_str: str, fmt: str) -> datetime:
         return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def age_label(published: str) -> str:
+    """'today', '1d', '6d' for a UTC_FMT timestamp; blank when it does not parse."""
+    when = parse_date(published, UTC_FMT)
+    if when == datetime.min.replace(tzinfo=timezone.utc):
+        return ""
+    days = (datetime.now(timezone.utc) - when).days
+    return "today" if days < 1 else f"{days}d"

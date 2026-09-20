@@ -2,47 +2,58 @@ name: Daily Job Discovery
 
 on:
   schedule:
-    # Run at 00:00 UTC every day
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Allow manual trigger
+    # 03:17 UTC daily. Off the top of the hour: GitHub warns that :00 is its
+    # busiest slot and delays or drops runs there.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
 
 permissions:
-  issues: write    # To comment on the issue
+  contents: write   # commit jobs_found.csv back to the repo
+  issues: write     # rewrite the digest issue
+
+# a manual run must not race the scheduled one on the push
+concurrency: discover
 
 jobs:
-  discover-jobs:
+  discover:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-          
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-        
-      - name: Run Job Discovery
-        run: python discover.py --days 7
-        
-      - name: Upload results as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: jobs-found
-          path: jobs_found.csv
-          if-no-files-found: ignore
-          
-      - name: Post summary to GitHub Issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ vars.ISSUE_NUMBER }}
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - run: python discover.py --days 7
+
+      # The repo is the store. jobs_found.csv is gitignored so the public
+      # template never carries personal data; the Action force-adds it in your
+      # private copy. Once tracked, `git pull` brings CI results to your laptop,
+      # and the daily commit counts as activity, so GitHub does not disable the
+      # schedule after 60 quiet days.
+      - name: Commit results
         run: |
-          if [ -z "$ISSUE_NUMBER" ]; then
-            echo "ISSUE_NUMBER variable is not set. Please set the ISSUE_NUMBER repository variable."
-            exit 0
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f jobs_found.csv
+          git diff --cached --quiet || { git commit -m "data: discovery $(date -u +%F)" && git push; }
+
+      # One pinned issue titled "Job digest" is the UI. Its body is rewritten
+      # each run with the ranked table. A comment (which sends a notification)
+      # is posted only when discover.py left one: new jobs or feed errors.
+      - name: Update digest issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh issue list --state open --search 'in:title "Job digest"' --json number --jq '.[0].number // empty')
+          if [ -z "$n" ]; then
+            n=$(gh issue create --title "Job digest" --body "First run in progress." | grep -o '[0-9]*$')
+            gh issue pin "$n" || true
           fi
-          gh issue comment $ISSUE_NUMBER --body-file logs/last_run_summary.txt
+          gh issue edit "$n" --body-file logs/digest.md
+          if [ -f logs/last_run_summary.txt ]; then
+            gh issue comment "$n" --body-file logs/last_run_summary.txt
+          fi

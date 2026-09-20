@@ -1,26 +1,30 @@
+# Argus configuration — the only file you edit.
+#
+# This is a neutral example profile. It runs as shipped. The "Set up profile"
+# form in the Actions tab rewrites it from a few answers; or edit the role
+# keywords, feeds, and scoring weights by hand, then commit.
+# Keyword matching is case-insensitive substring: "developer" also matches
+# "Software Developer II".
+
 [discovery]
+# most recent entries read per feed, per run
 max_per_feed = 25
 
+# a job is kept when its title or description contains one of these
 role_keywords = [
+    "software engineer",
+    "software developer",
+    "backend engineer",
+    "frontend engineer",
+    "full stack",
     "data analyst",
-    "business analyst",
-    "data analytics",
-    "analytics analyst",
-    "reporting analyst",
-    "bi analyst",
-    "power bi",
-    "sql analyst",
-    "insights analyst",
-    "analytics engineer",
-    "sql developer",
-    "database analyst",
-    "junior data scientist",
-    "entry level data scientist",
-    "data science intern",
+    "data engineer",
 ]
 
+# a job is dropped when its title contains one of these
 seniority_block = [
     "senior",
+    "staff",
     "lead",
     "manager",
     "director",
@@ -31,11 +35,10 @@ seniority_block = [
     "vice president",
 ]
 
-# RemoteOK RSS was removed on their side: every .rss path answers HTTP 410 Gone,
-# including the general remote-jobs.rss. feedparser reported this as a "mismatched
-# tag" because it was parsing the HTML error page. Their JSON API
-# (https://remoteok.com/api) still works, but feedparser only reads RSS, so
-# using it needs code. Do not re-add these URLs.
+# ---- feeds -------------------------------------------------------------
+# `label` is display only (dashboard, daily digest). The parser picks the
+# title shape from the URL host: weworkremotely.com, linkedin.com, naukri.com.
+# Any other RSS feed works with the plain "<title>" shape.
 
 [[discovery.feeds]]
 label = "WWR | Programming"
@@ -49,43 +52,51 @@ url = "https://weworkremotely.com/remote-jobs.rss"
 label = "Himalayas | Remote"
 url = "https://himalayas.app/jobs/rss"
 
-[[discovery.feeds]]
-label = "LinkedIn | DA India"
-url = "https://news.google.com/rss/search?q=site%3Alinkedin.com%2Fjobs+%22data+analyst+India%22&hl=en-IN&gl=IN&ceid=IN:en"
-
-[[discovery.feeds]]
-label = "LinkedIn | BA India"
-url = "https://news.google.com/rss/search?q=site%3Alinkedin.com%2Fjobs+%22business+analyst+India%22&hl=en-IN&gl=IN&ceid=IN:en"
-
-[[discovery.feeds]]
-label = "LinkedIn | DA Remote"
-url = "https://news.google.com/rss/search?q=site%3Alinkedin.com%2Fjobs+%22data+analyst+remote%22&hl=en-IN&gl=IN&ceid=IN:en"
-
-[[discovery.feeds]]
-label = "LinkedIn | Analytics Eng"
-url = "https://news.google.com/rss/search?q=site%3Alinkedin.com%2Fjobs+%22analytics+engineer%22&hl=en-IN&gl=IN&ceid=IN:en"
-
-[[discovery.feeds]]
-label = "WWR | Mgmt & Finance"
-url = "https://weworkremotely.com/categories/remote-management-and-finance-jobs.rss"
-
-# Remotive: .com is Cloudflare-walled and category filtering is ignored;
-# .io mirror serves the general feed, which discover.py filters by role keywords anyway.
+# Remotive: .com is Cloudflare-walled and ignores category filters; the .io
+# mirror serves the general feed, which role_keywords filters anyway.
 [[discovery.feeds]]
 label = "Remotive | Remote"
 url = "https://remotive.io/remote-jobs/feed"
 
-# Naukri has no public RSS (/rss-feed-jobs is a keyword search page, and the
-# site 403s non-browser user agents). Google News indexes Naukri job pages,
-# so scope a news search to the site — same trick as the LinkedIn feeds above.
+# LinkedIn has no public RSS. Google News indexes LinkedIn job pages, so a
+# news search scoped to the site works as a feed. Change the quoted phrase
+# (URL-encoded: %22 is a quote, + is a space) and the country codes
+# (hl=en-US&gl=US&ceid=US:en) to match your search.
 [[discovery.feeds]]
-label = "Naukri | DA India"
-url = "https://news.google.com/rss/search?q=site%3Anaukri.com+%22data+analyst%22&hl=en-IN&gl=IN&ceid=IN:en"
+label = "LinkedIn | Software Engineer"
+url = "https://news.google.com/rss/search?q=site%3Alinkedin.com%2Fjobs+%22software+engineer%22&hl=en-US&gl=US&ceid=US:en"
 
+# Naukri (India) works the same way. Delete this feed if you do not want India.
 [[discovery.feeds]]
-label = "Naukri | BA India"
-url = "https://news.google.com/rss/search?q=site%3Anaukri.com+%22business+analyst%22&hl=en-IN&gl=IN&ceid=IN:en"
+label = "Naukri | Software Engineer"
+url = "https://news.google.com/rss/search?q=site%3Anaukri.com+%22software+engineer%22&hl=en-IN&gl=IN&ceid=IN:en"
 
-[[discovery.feeds]]
-label = "Naukri | Analytics"
-url = "https://news.google.com/rss/search?q=site%3Anaukri.com+%22analytics%22&hl=en-IN&gl=IN&ceid=IN:en"
+# RemoteOK RSS is gone upstream (HTTP 410). Do not re-add its .rss URLs.
+
+# ---- scoring -----------------------------------------------------------
+# The dashboard ranks stored jobs by points. Freshness is fixed in code
+# (<=1 day 50, <=3 days 40, <=7 days 25, <=14 days 10). Everything below is
+# yours to tune.
+
+[scoring]
+# +skill_point for each skill found in the title, description, or location;
+# the total is capped at skill_cap
+skills = ["python", "sql", "typescript", "react", "aws", "docker", "git"]
+skill_point = 5
+skill_cap = 25
+
+# first title keyword that matches wins; order is priority
+[scoring.title]
+"software engineer" = 30
+"software developer" = 30
+"backend engineer" = 25
+"frontend engineer" = 25
+"data analyst" = 20
+
+# first location keyword that matches wins; checked against title,
+# description, and location
+[scoring.location]
+"remote" = 20
+"work from anywhere" = 20
+"anywhere" = 20
+"hybrid" = 5

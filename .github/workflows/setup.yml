@@ -1,0 +1,68 @@
+name: Set up profile
+
+# The setup form: Actions → Set up profile → Run workflow. Writes config.toml
+# from the answers, commits it, and starts the first discovery run.
+on:
+  workflow_dispatch:
+    inputs:
+      titles:
+        description: 'Job titles you want, comma-separated'
+        required: true
+        default: 'software engineer, backend engineer'
+      country:
+        description: 'Country for LinkedIn searches (IN also adds Naukri)'
+        type: choice
+        default: US
+        options: [US, GB, CA, AU, IN, SG, IE, NZ, DE, NL, AE, ZA]
+      remote:
+        description: 'Include remote-only job boards'
+        type: boolean
+        default: true
+      skills:
+        description: 'Skills that rank a match higher, comma-separated'
+        default: 'python, sql'
+      locations:
+        description: 'Cities or regions that rank higher, comma-separated (optional)'
+        default: ''
+
+permissions:
+  contents: write   # commit config.toml
+  actions: write    # start the first discovery run
+
+# never rewrite config while a discovery run is pushing
+concurrency: discover
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # inputs go through env, never inline in the script: a quote in a
+      # title must not become shell syntax
+      - name: Write config.toml
+        env:
+          TITLES: ${{ inputs.titles }}
+          COUNTRY: ${{ inputs.country }}
+          REMOTE: ${{ inputs.remote }}
+          SKILLS: ${{ inputs.skills }}
+          LOCATIONS: ${{ inputs.locations }}
+        run: >
+          python setup.py --titles "$TITLES" --country "$COUNTRY" --remote "$REMOTE"
+          --skills "$SKILLS" --locations "$LOCATIONS"
+
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.toml
+          git diff --cached --quiet || { git commit -m "config: set up profile" && git push; }
+
+      - name: Start discovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run discover.yml

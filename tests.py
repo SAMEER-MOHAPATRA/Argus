@@ -4,15 +4,35 @@ Run: python tests.py
 """
 
 import tempfile
+import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import discover
+import scoring
+import setup
 import store
-from dashboard import APPLIED_ROUTE, _build_html, render, score_job
+from dashboard import APPLIED_ROUTE, _build_html, render
+from scoring import rank, score_job
 
 # the module-global path is the persistence seam: point it at a tmp dir
-store.CSV_PATH = Path(tempfile.mkdtemp()) / "jobs.csv"
+_tmp = Path(tempfile.mkdtemp())
+store.CSV_PATH = _tmp / "jobs.csv"
+discover.SUMMARY_PATH = _tmp / "summary.txt"
+discover.DIGEST_PATH = _tmp / "digest.md"
+
+# same seam for scoring: pin the weights so the asserts below survive any
+# retune of config.toml
+scoring.TITLE_POINTS = {"data analyst": 30, "business analyst": 20}
+scoring.LOCATION_POINTS = {"remote": 20, "india": 10}
+scoring.SKILL_KEYWORDS = ["sql", "python", "power bi", "tableau", "excel", "etl"]
+scoring.SKILL_POINT, scoring.SKILL_CAP = 5, 25
+
+LINKEDIN = "https://news.google.com/rss/search?q=site%3Alinkedin.com%2Fjobs+%22x%22"
+NAUKRI = "https://news.google.com/rss/search?q=site%3Anaukri.com+%22x%22"
+WWR = "https://weworkremotely.com/remote-jobs.rss"
+HIMALAYAS = "https://himalayas.app/jobs/rss"
 
 
 def job_at(days_ago: int, **kw) -> dict:
@@ -67,37 +87,108 @@ def test_suite() -> None:
     assert discover.sanitize_html("<br/>Remote\n\n  (EU)") == "Remote (EU)"
     assert discover.sanitize_html("") == ""
 
-    # --- parse_title: Google News and WWR titles carry the employer, feeds do not ---
+    # --- parse_title: the feed URL picks the title shape, the label is display only ---
     assert discover.parse_title(
         "Wipro hiring BUSINESS ANALYST L4 in Pune Division, Maharashtra, India - LinkedIn India",
-        "LinkedIn | BA India",
+        LINKEDIN,
     ) == ("BUSINESS ANALYST L4", "Wipro")
     assert discover.parse_title(
-        "Optum hiring Data Analyst - Remote in Eden Prairie, MN - LinkedIn", "LinkedIn | DA Remote",
+        "Optum hiring Data Analyst - Remote in Eden Prairie, MN - LinkedIn", LINKEDIN,
     ) == ("Data Analyst - Remote", "Optum")
     # LinkedIn's other shape: "<Title> at <Company> — <Location> | LinkedIn Jobs"
     assert discover.parse_title(
         "Analytics Engineer at Dojo — London, England, United Kingdom | LinkedIn Jobs - LinkedIn",
-        "LinkedIn | Analytics Eng",
+        LINKEDIN,
     ) == ("Analytics Engineer", "Dojo")
     assert discover.parse_title(
         "Data Analyst - Business (Remote) at Quik Hire Staffing — Philippines | LinkedIn Jobs - LinkedIn",
-        "LinkedIn | DA Remote",
+        LINKEDIN,
     ) == ("Data Analyst - Business (Remote)", "Quik Hire Staffing")
     assert discover.parse_title(
         "Support Engineer - Level 2 - Bengaluru - Virtusa - 0 to 1 years of experience - Naukri.com",
-        "Naukri | DA India",
+        NAUKRI,
     ) == ("Support Engineer - Level 2", "Virtusa")
     assert discover.parse_title(
-        "DCX: Home-Based Marketing Data Analyst", "WWR | All",
+        "DCX: Home-Based Marketing Data Analyst", WWR,
     ) == ("Home-Based Marketing Data Analyst", "DCX")
     # a title that does not fit its feed's shape is returned untouched, with no company
-    assert discover.parse_title("Data Analyst", "Himalayas | Remote") == ("Data Analyst", "")
-    assert discover.parse_title("Data Analyst", "LinkedIn | DA India") == ("Data Analyst", "")
-    assert discover.parse_title("Analyst - Naukri.com", "Naukri | DA India") == ("Analyst - Naukri.com", "")
+    assert discover.parse_title("Data Analyst", HIMALAYAS) == ("Data Analyst", "")
+    assert discover.parse_title("Data Analyst", LINKEDIN) == ("Data Analyst", "")
+    assert discover.parse_title("Analyst - Naukri.com", NAUKRI) == ("Analyst - Naukri.com", "")
     assert discover.parse_title(
-        "Data Analyst - Lenskart - 0 to 5 years of experience - Naukri.com", "Naukri | DA India",
+        "Data Analyst - Lenskart - 0 to 5 years of experience - Naukri.com", NAUKRI,
     ) == ("Data Analyst - Lenskart - 0 to 5 years of experience - Naukri.com", "")
+
+    # --- extract_location: remote-only boards default to Remote, by URL not label ---
+    bare = SimpleNamespace()
+    assert discover.extract_location(bare, WWR) == "Remote"
+    assert discover.extract_location(bare, HIMALAYAS) == "Remote"
+    assert discover.extract_location(bare, LINKEDIN) == "Not specified"
+    assert discover.extract_location(SimpleNamespace(location=" Pune "), WWR) == "Pune"
+
+    # --- write_summary: the comment lists every new job as a link, plus feed errors ---
+    discover.write_summary(
+        [("Feed A", 1, None), ("Feed B", 0, "boom")],
+        [{"title": "Data Analyst", "company": "Acme", "link": "https://example.com/j1"}],
+    )
+    summary = discover.SUMMARY_PATH.read_text(encoding="utf-8")
+    assert "Feed B" in summary and "boom" in summary
+    assert "- [Data Analyst @ Acme](https://example.com/j1)" in summary
+    assert "```" not in summary  # per-feed counts moved to the digest body
+    # a quiet run (no new jobs, no errors) posts no comment: the file is removed
+    discover.write_summary([("Feed A", 0, None)], [])
+    assert not discover.SUMMARY_PATH.exists()
+
+    # --- write_digest: the issue body is a score-ranked table with links ---
+    discover.write_digest(
+        [
+            {**job_at(0, title="Data | Analyst", company="Acme", location="Remote",
+                      link="https://example.com/j1", source="Feed A"), "_score": 90},
+            {**job_at(2, title="Business Analyst", company="Globex", location="Pune",
+                      link="https://example.com/j2", source="Feed A"), "_score": 40},
+        ],
+        [("Feed A", 2, None)],
+        days=7,
+        new_count=2,
+    )
+    digest = discover.DIGEST_PATH.read_text(encoding="utf-8")
+    assert "| 90 | [Data / Analyst](https://example.com/j1) | Acme | Remote | today |" in digest
+    assert digest.index("example.com/j1") < digest.index("example.com/j2")
+    assert "2 new today" in digest and "2 jobs in the last 7 days" in digest
+    assert "<details>" in digest and "Feed A" in digest
+
+    # --- age_label: relative posting age for the digest and dashboard ---
+    assert store.age_label(job_at(0)["published"]) == "today"
+    assert store.age_label(job_at(1)["published"]) == "1d"
+    assert store.age_label(job_at(6)["published"]) == "6d"
+    assert store.age_label("garbage") == ""
+
+    # --- setup.build_config: the Actions form writes a valid config.toml ---
+    cfg = tomllib.loads(setup.build_config(
+        titles=["Data Analyst", "Business Analyst"], country="IN",
+        skills=["SQL", "Python"], remote=True, locations=["Pune"],
+    ))
+    assert cfg["discovery"]["role_keywords"] == ["data analyst", "business analyst"]
+    urls = [f["url"] for f in cfg["discovery"]["feeds"]]
+    assert "https://weworkremotely.com/remote-jobs.rss" in urls
+    assert any("site%3Alinkedin.com%2Fjobs+%22data+analyst%22" in u and "gl=IN" in u for u in urls)
+    assert any("site%3Anaukri.com+%22business+analyst%22" in u for u in urls)
+    assert cfg["scoring"]["title"] == {"data analyst": 30, "business analyst": 25}
+    assert cfg["scoring"]["location"] == {"remote": 20, "pune": 10, "india": 10}
+    assert cfg["scoring"]["skills"] == ["sql", "python"]
+    # US, on-site only: no remote boards, no Naukri
+    cfg = tomllib.loads(setup.build_config(["Nurse"], "US", [], remote=False, locations=[]))
+    urls = [f["url"] for f in cfg["discovery"]["feeds"]]
+    assert len(urls) == 1 and "linkedin" in urls[0] and "gl=US" in urls[0]
+    assert cfg["scoring"]["location"] == {"united states": 10}
+    # a quote in a title must not break the TOML
+    tomllib.loads(setup.build_config(['Analyst "II"'], "GB", [], False, []))
+    # blank titles would make role_keywords empty and drop every job — refuse
+    try:
+        setup.build_config([" ", ""], "US", [], True, [])
+        assert False, "empty titles accepted"
+    except ValueError:
+        pass
 
     JOBS = [
         {
@@ -122,10 +213,7 @@ def test_suite() -> None:
         },
     ]
 
-    html = _build_html(
-        total_jobs=2, jobs_week=1, feed_breakdown=[("RemoteOK", 1), ("WWR", 1)],
-        ranked_jobs=JOBS, total_apps=1, apps_week=0, recent_apps=[JOBS[1]],
-    )
+    html = _build_html(ranked_jobs=JOBS, jobs_week=1, apps_week=0)
 
     # untrusted feed title must be escaped, never raw
     assert "<script>alert(1)</script>" not in html
@@ -142,9 +230,9 @@ def test_suite() -> None:
     assert f"'{APPLIED_ROUTE}'" in html
     assert "localStorage" not in html and "confirm(" not in html
 
-    # Recent Applications panel lists the applied job, newest status_date first
-    assert "Recent Applications" in html
-    assert "<td>Globex</td>" in html and "2026-06-21" in html
+    # one table: company is a column; the feed and recent-applications panels are gone
+    assert "<td>Globex</td>" in html
+    assert "Jobs by Feed" not in html and "Recent Applications" not in html
 
     # --- score_job: freshness buckets, title/location match, skill cap ---
     assert score_job(job_at(0)) == 50
@@ -158,12 +246,11 @@ def test_suite() -> None:
     assert score_job(job_at(20, location="Pune")) == 0  # no location keyword
     assert score_job(job_at(20, summary="sql python power bi tableau excel etl")) == 25  # 6 skills capped
 
-    # --- render: higher score first, ties stay newest-first ---
-    store.add_jobs([
-        full_job("lo_old", 18),
-        full_job("hi", 20, title="Data Analyst"),
-        full_job("lo_new", 16),
-    ])
+    # --- rank / render: higher score first, ties stay newest-first ---
+    window = [full_job("lo_old", 18), full_job("hi", 20, title="Data Analyst"), full_job("lo_new", 16)]
+    assert [j["id"] for j in rank(window)] == ["hi", "lo_new", "lo_old"]
+    assert all("_score" in j for j in window)
+    store.add_jobs(window)
     page = render()
     assert page.index("data-id='hi'") < page.index("data-id='lo_new'") < page.index("data-id='lo_old'")
 

@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 .pytest_cache/
 .tokensave/
+# ignored so the public template never carries personal data; the Action
+# force-adds it in your private copy (see .github/workflows/discover.yml)
 jobs_found.csv
 jobs_applied.csv
 *.env
@@ -15,3 +17,5 @@ dashboard.html
 .claude/skills/
 scratchpad/
 graphify-out/
+# local planning notes; config.personal.toml lives here and must stay private
+plans/
