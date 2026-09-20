@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Argus</title>
+<style>
+/* A watchman's ledger. Ochre parchment, sepia ink, the tapered oxblood rules
+   of a monster stat block, and the peacock eyes Hera made of Argus. Two faces
+   that ship with Windows: Harrington (Art Nouveau lettering) for the wordmark
+   and the headline, Palatino Linotype for everything else. No web fonts:
+   nothing leaves this computer. */
+:root {
+  --paper: #e9d8b3; --paper-hi: #f2e5c6; --paper-lo: #dcc79a; --field: #f6edd6;
+  --ink: #2a1c12; --muted: #6a5540; --line: #c4ab78;
+  --red: #7d1f1a; --on-red: #f6edd6; --green: #2f5d4f; --gold: #b3861f; --err: #8f1d12;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141d19; --paper-hi: #1c2823; --paper-lo: #0e1512; --field: #1b2621;
+    --ink: #e9dcbd; --muted: #a4967a; --line: #3a4a42;
+    --red: #c9664f; --on-red: #141d19; --green: #5fa38f; --gold: #d9ad4c; --err: #f09a86;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0 auto; padding: 1.5rem 1.25rem 5rem; max-width: 72rem; min-height: 100vh;
+  background: radial-gradient(ellipse 120% 90% at 50% 0%, var(--paper-hi) 0%, var(--paper) 50%, var(--paper-lo) 100%) fixed;
+  color: var(--ink);
+  font: 17px/1.6 "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  font-variant-numeric: tabular-nums;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+p { margin: 0; }
+b { font-weight: 700; }
+.muted { color: var(--muted); }
+.display { font-family: Harrington, "Palatino Linotype", Georgia, serif; font-weight: 400; }
+
+/* --- masthead: the wordmark, one peacock eye per feed, a tapered rule --- */
+header {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem;
+  margin-bottom: 2.5rem;
+}
+/* the stat-block rule: an oxblood bar that tapers to a point at both ends */
+header::after {
+  content: ""; display: block; height: 6px; background: var(--red);
+  clip-path: polygon(0 50%, 1.2% 0, 98.8% 0, 100% 50%, 98.8% 100%, 1.2% 100%);
+}
+header::after { flex-basis: 100%; margin-top: .5rem; }
+h1 { margin: 0; font-size: 2.6rem; line-height: 1; letter-spacing: .02em; }
+.watch { display: flex; flex-wrap: wrap; align-items: center; gap: 1.1rem; color: var(--muted); font-size: 1rem; }
+.eyes { display: flex; flex-wrap: wrap; gap: .55rem; padding: .25rem; }
+/* a peacock-feather eye: verdigris leaf, gold lens, ink pupil */
+.eye {
+  position: relative; display: block; width: 1.15rem; height: 1.15rem; transform: rotate(45deg);
+  border-radius: 100% 0; background: var(--green); box-shadow: 0 0 0 1px var(--gold);
+}
+.eye::before { content: ""; position: absolute; inset: .24rem; border-radius: inherit; background: var(--gold); }
+.eye::after { content: ""; position: absolute; inset: .4rem; border-radius: 50%; background: var(--ink); }
+body[data-refreshing="1"] .eye { animation: blink 1.8s ease-in-out infinite; }
+.eye:nth-child(2n) { animation-delay: .3s; }
+.eye:nth-child(3n) { animation-delay: .6s; }
+@keyframes blink { 0%, 78%, 100% { transform: scaleY(1) rotate(45deg); } 88% { transform: scaleY(.08) rotate(45deg); } }
+@media (prefers-reduced-motion: reduce) { .eye { animation: none !important; } }
+
+/* --- buttons: an engraved double line, ink on parchment --- */
+button {
+  cursor: pointer; padding: .5rem 1.1rem; border-radius: .15rem; border: 1px solid var(--ink);
+  background: var(--field); color: var(--ink); font-weight: 700; font-size: .95rem; line-height: 1.3;
+  box-shadow: inset 0 0 0 2px var(--field), inset 0 0 0 3px var(--gold);
+}
+button:hover:enabled { background: var(--ink); color: var(--paper); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--gold); }
+button.primary { background: var(--red); border-color: var(--red); color: var(--on-red); box-shadow: inset 0 0 0 2px var(--red), inset 0 0 0 3px var(--gold); }
+button.primary:hover:enabled { background: var(--ink); border-color: var(--ink); color: var(--paper); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--gold); }
+button.quiet { border-color: transparent; background: transparent; box-shadow: none; font-weight: 400; color: var(--muted); padding-left: .5rem; padding-right: .5rem; }
+button.quiet:hover:enabled { background: transparent; color: var(--ink); text-decoration: underline; box-shadow: none; }
+button:disabled { opacity: .45; cursor: default; }
+
+/* --- profile sentence, with an illuminated first letter --- */
+.profile { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .75rem 2rem; margin-bottom: 1.5rem; }
+body.onboarding .profile { display: none; }
+.who { max-width: 44rem; font-size: 1.2rem; line-height: 1.5; }
+.who::first-letter {
+  float: left; padding: .1em .1em 0 0; font-family: Harrington, Georgia, serif; font-size: 3.1em; line-height: .78; color: var(--red);
+}
+.who small { display: block; margin-top: .35rem; font-size: 1rem; color: var(--muted); }
+form.edit {
+  flex-basis: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem 1.5rem;
+  margin-top: .5rem; padding: 1.5rem 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+form.edit[hidden] { display: none; }
+form.edit label { display: grid; gap: .35rem; font-size: .9rem; color: var(--muted); }
+form.edit input, form.edit select { padding: .5rem .7rem; border-radius: .15rem; border: 1px solid var(--line); background: var(--field); color: var(--ink); }
+form.edit input:focus, form.edit select:focus { border-color: var(--gold); outline: none; }
+form.edit .wide { grid-column: 1 / -1; }
+form.edit .check { display: flex; flex-direction: row; align-items: center; gap: .5rem; align-self: end; padding-bottom: .5rem; }
+form.edit .check input { width: 1rem; height: 1rem; accent-color: var(--red); }
+form.edit .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+
+/* --- the paste box, inside an arched double frame --- */
+details.hero { margin-bottom: 2.5rem; }
+details.hero > summary { cursor: pointer; width: max-content; color: var(--muted); }
+details.hero > summary:hover { color: var(--ink); text-decoration: underline; }
+body.onboarding details.hero > summary { display: none; }
+.hero-body {
+  max-width: 50rem; padding: 2rem 2.25rem 2.25rem; border: 3px double var(--gold);
+  border-radius: 3rem 3rem .25rem .25rem; background: var(--paper-hi);
+}
+body.watching .hero-body { margin-top: 1rem; }
+.hero h2 { margin: 0 0 .75rem; max-width: 20ch; font-size: 3rem; line-height: 1.05; }
+body.watching .hero h2 { display: none; }
+.lead { margin: 0 0 1.75rem; max-width: 40rem; font-size: 1.125rem; font-style: italic; color: var(--muted); }
+body.watching .lead { display: none; }
+textarea {
+  display: block; width: 100%; min-height: 14rem; resize: vertical; padding: .9rem 1rem; border-radius: .15rem;
+  border: 1px solid var(--line); background: var(--field); color: var(--ink); line-height: 1.6;
+}
+textarea:focus { border-color: var(--gold); outline: none; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1rem; }
+.err { color: var(--err); }
+.err:empty { display: none; }
+details.tip { margin-top: 1.75rem; }
+details.tip summary { cursor: pointer; width: max-content; color: var(--muted); }
+details.tip summary:hover { color: var(--ink); text-decoration: underline; }
+details.tip p { margin: .75rem 0; color: var(--muted); }
+pre {
+  margin: 0 0 .75rem; padding: .9rem 1rem; border-radius: .15rem; background: var(--field); border: 1px solid var(--line);
+  white-space: pre-wrap; word-break: break-word; font: .875rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* --- the ledger --- */
+.tally { margin-bottom: 1rem; font-size: 1.2rem; }
+body.onboarding .tally { display: none; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 50rem; }
+th, td { padding: .75rem .75rem .75rem 0; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--line); }
+th { padding-top: 0; padding-bottom: .4rem; font-variant-caps: small-caps; letter-spacing: .05em; font-weight: 700; color: var(--red); border-bottom: 2px solid var(--red); }
+td:first-child, th:first-child { padding-right: 1.25rem; }
+td.title { font-weight: 700; }
+td.act { white-space: nowrap; text-align: right; padding-right: 0; }
+/* the score reads as a gold bar filled to the value; score_job caps it at 100 */
+.score { display: inline-grid; grid-template-columns: 4.5rem auto; align-items: center; gap: .6rem; font-weight: 700; }
+.score::before { content: ""; height: .45rem; border: 1px solid var(--muted); background: linear-gradient(90deg, var(--gold) calc(var(--s) * 1%), transparent 0); }
+tr.done .score::before { background: var(--line); border-color: var(--line); }
+a.apply, button.mark { display: inline-block; padding: .3rem .75rem; border-radius: .15rem; font-size: .9rem; font-weight: 700; line-height: 1.3; }
+a.apply { background: var(--red); color: var(--on-red); text-decoration: none; box-shadow: inset 0 0 0 2px var(--red), inset 0 0 0 3px var(--gold); }
+a.apply:hover { background: var(--ink); color: var(--paper); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--gold); }
+button.mark { margin-left: .4rem; }
+tr.done td { color: var(--muted); }
+tr.done td.title { font-weight: 400; }
+.empty { padding: 3rem 0; color: var(--muted); max-width: 46rem; }
+@media (max-width: 600px) {
+  body { padding-top: 1rem; }
+  header { margin-bottom: 1.75rem; }
+  h1 { font-size: 2.2rem; }
+  .hero-body { padding: 1.5rem 1.25rem; border-radius: 2rem 2rem .25rem .25rem; }
+  .hero h2 { font-size: 2.25rem; }
+  .watch #statusText { display: none; }
+}
+</style>
+</head>
+<body class="{{MODE}}" data-refreshing="{{REFRESHING}}">
+<header>
+  <h1 class="display">Argus</h1>
+  <div class="watch">
+    <span class="eyes" role="img" aria-label="{{N_FEEDS}} feeds watched" title="{{N_FEEDS}} feeds watched">{{EYES}}</span>
+    <span id="statusText">{{STATUS}}</span>
+    <button id="refresh" {{REFRESH_DISABLED}}>Fetch jobs</button>
+  </div>
+</header>
+
+<section class="profile">
+  <p class="who">{{WATCHING}}</p>
+  <button id="edit">Edit profile</button>
+  <form id="editForm" class="edit" hidden>
+    <label class="wide">Job titles, comma-separated, most wanted first
+      <input name="titles" value="{{TITLES}}" required></label>
+    <label>Country
+      <select name="country">{{COUNTRY_OPTIONS}}</select></label>
+    <label class="check"><input type="checkbox" name="remote" {{REMOTE_CHECKED}}> Include remote jobs</label>
+    <label class="wide">Skills, comma-separated
+      <input name="skills" value="{{SKILLS}}"></label>
+    <label class="wide">Cities or regions, comma-separated
+      <input name="locations" value="{{LOCATIONS}}"></label>
+    <div class="actions">
+      <button type="submit" class="primary">Save and fetch</button>
+      <button type="button" id="cancel" class="quiet">Cancel</button>
+      <span id="editError" class="err"></span>
+    </div>
+  </form>
+</section>
+
+<details class="hero" {{HERO_OPEN}}>
+  <summary>Paste a new CV</summary>
+  <div class="hero-body">
+    <h2 class="display">Paste your CV to start the watch.</h2>
+    <p class="lead">Argus reads it, picks the job titles and skills to watch, and fetches matching
+      postings from LinkedIn, Naukri and the remote boards. Nothing leaves this computer.</p>
+    <textarea id="cvText" placeholder="Your CV, or the five-line answer from the prompt below." spellcheck="false"></textarea>
+    <div class="row">
+      <button id="start" class="primary">Start watching</button>
+      <span id="pasteError" class="err"></span>
+    </div>
+    <details class="tip">
+      <summary>Better titles? Ask a chatbot first</summary>
+      <p>Paste this prompt and your CV into ChatGPT, Claude, Gemini or Copilot. Then paste its five-line
+        answer into the box above instead of the CV. Argus reads both shapes.</p>
+      <pre id="prompt">{{PROMPT}}</pre>
+      <button id="copy">Copy prompt</button>
+    </details>
+  </div>
+</details>
+
+<p class="tally"><b>{{N_OPEN}}</b> open matches from the last {{WINDOW_DAYS}} days,
+  <b>{{N_WEEK}}</b> new this week, <b>{{N_APPLIED}}</b> applied this week.</p>
+<div class="scroll">{{TABLE}}</div>
+
+<script>
+// the server is the only state: every action is one POST, then a reload
+const APPLIED = '{{APPLIED_ROUTE}}';
+const $ = s => document.querySelector(s);
+const post = (url, body) => fetch(url, {
+  method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {}),
+});
+
+async function submitProfile(body, btn, errEl) {
+  errEl.textContent = '';
+  btn.disabled = true;
+  const r = await post('/profile', body);
+  if (r.ok) { location.reload(); return; }
+  errEl.textContent = await r.text();
+  btn.disabled = false;
+}
+
+$('#start').addEventListener('click', () => {
+  const text = $('#cvText').value.trim();
+  if (!text) { $('#pasteError').textContent = 'Paste your CV first.'; return; }
+  submitProfile({text}, $('#start'), $('#pasteError'));
+});
+
+$('#editForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const list = k => (f.get(k) || '').split(',').map(s => s.trim()).filter(Boolean);
+  submitProfile({fields: {
+    titles: list('titles'), country: f.get('country'), remote: f.has('remote'),
+    skills: list('skills'), locations: list('locations'),
+  }}, e.target.querySelector('[type=submit]'), $('#editError'));
+});
+$('#edit').addEventListener('click', () => { $('#editForm').hidden = !$('#editForm').hidden; });
+$('#cancel').addEventListener('click', () => { $('#editForm').hidden = true; });
+
+$('#copy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('#prompt').textContent);
+  $('#copy').textContent = 'Copied';
+  setTimeout(() => { $('#copy').textContent = 'Copy prompt'; }, 1500);
+});
+
+$('#refresh').addEventListener('click', async () => {
+  $('#refresh').disabled = true;
+  await post('/refresh');
+  document.body.dataset.refreshing = '1';
+  $('#statusText').textContent = 'Fetching jobs…';
+  poll();
+});
+
+// while discovery runs in the background, wait for it, then show the new rows
+function poll() {
+  const t = setInterval(async () => {
+    const s = await (await fetch('/status')).json();
+    if (!s.refreshing) { clearInterval(t); location.reload(); }
+  }, 2000);
+}
+if (document.body.dataset.refreshing === '1') poll();
+
+document.querySelectorAll('button.mark').forEach(b =>
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    const r = await fetch(APPLIED + encodeURIComponent(b.dataset.id), {method: 'POST'});
+    if (r.ok) location.reload();
+    else { b.disabled = false; b.textContent = 'failed'; }
+  })
+);
+</script>
+</body>
+</html>
