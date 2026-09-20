@@ -52,7 +52,7 @@ jobs:
           SKILLS: ${{ inputs.skills }}
           LOCATIONS: ${{ inputs.locations }}
         run: >
-          python setup.py --titles "$TITLES" --country "$COUNTRY" --remote "$REMOTE"
+          python argus/setup.py --titles "$TITLES" --country "$COUNTRY" --remote "$REMOTE"
           --skills "$SKILLS" --locations "$LOCATIONS"
 
       - name: Commit

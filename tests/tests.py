@@ -1,14 +1,18 @@
 """Checks on the Argus persistence, discovery, and dashboard seams.
 
-Run: python tests.py
+Run: python tests/tests.py
 """
 
+import sys
 import tempfile
 import tomllib
 from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "argus"))  # the modules are plain scripts, not a package
 
 import config
 import dashboard
@@ -21,6 +25,11 @@ from dashboard import APPLIED_ROUTE, _build_html, render
 from scoring import rank, score_job
 
 # the module-global path is the persistence seam: point it at a tmp dir
+# every path is anchored to the repo root, never the cwd: the Action and the
+# dashboard subprocess both start elsewhere
+assert store.CSV_PATH == ROOT / "jobs_found.csv" and config.CONFIG_PATH == ROOT / "config.toml"
+assert discover.DIGEST_PATH == ROOT / "logs" / "digest.md"
+
 _tmp = Path(tempfile.mkdtemp())
 store.CSV_PATH = _tmp / "jobs.csv"
 config.CONFIG_PATH = _tmp / "config.toml"
@@ -258,6 +267,8 @@ def test_suite() -> None:
     store.add_jobs(window)
     page = render()
     assert page.index("data-id='hi'") < page.index("data-id='lo_new'") < page.index("data-id='lo_old'")
+    # the score is drawn as a bar: the CSS reads the value from --s
+    assert "class='score' style='--s:" in page and "open matches" in page
 
     # --- profile: the five-line answer from the prompt is parsed exactly ---
     answers = cv.parse_answers(
@@ -289,7 +300,7 @@ def test_suite() -> None:
     assert cv.read(cv_text)["titles"][0] == "data analyst"
     assert cv.read("titles: nurse\ncountry: GB")["titles"] == ["nurse"]
     # the prompt on the page is the one in the docs
-    assert cv.PROMPT.strip() in Path("docs/profile-prompt.md").read_text(encoding="utf-8")
+    assert cv.PROMPT.strip() in (ROOT / "docs/profile-prompt.md").read_text(encoding="utf-8")
 
     # --- setup.read_profile inverts build_config, so the edit form shows the current answers ---
     fields = {"titles": ["data analyst", "business analyst"], "country": "IN", "remote": True,
@@ -299,7 +310,7 @@ def test_suite() -> None:
     assert setup.read_profile(tomllib.loads(setup.build_config(**onsite))) == onsite
     # the shipped example is not a profile yet; a setup.py file is
     assert setup.is_profile(setup.build_config(**onsite)) is True
-    assert setup.is_profile(Path("config.toml").read_text(encoding="utf-8")) is False
+    assert setup.is_profile((ROOT / "config.toml").read_text(encoding="utf-8")) is False
 
     # --- store.clear_new drops unseen rows and keeps every application ---
     store.clear_new()

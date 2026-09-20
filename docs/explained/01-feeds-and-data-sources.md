@@ -46,7 +46,7 @@ it wants to be read this way.
 
 ### Feed health
 
-`python discover.py --check` prints one line per feed and writes nothing:
+`python argus/discover.py --check` prints one line per feed and writes nothing:
 
 ```
 WWR | All                      |  88 entries | bozo=False | Grafana Labs: Associate Observability Architect

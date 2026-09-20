@@ -37,8 +37,9 @@ DEFAULT_DAYS = 7
 # ponytail: 8s socket timeout prevents feedparser from hanging on dead hosts
 socket.setdefaulttimeout(8)
 
-SUMMARY_PATH = Path("logs/last_run_summary.txt")   # the issue comment
-DIGEST_PATH = Path("logs/digest.md")                # the issue body
+_ROOT = Path(__file__).resolve().parent.parent  # the repo root: logs/ sits beside config.toml
+SUMMARY_PATH = _ROOT / "logs" / "last_run_summary.txt"   # the issue comment
+DIGEST_PATH = _ROOT / "logs" / "digest.md"                # the issue body
 
 log = logging.getLogger("discover")
 

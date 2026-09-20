@@ -6,7 +6,7 @@ dashboard.html artifact to go stale. Discovery runs as a background
 subprocess so a fresh process reads the new config.toml.
 
 Usage:
-    python dashboard.py      # opens http://localhost:8765/
+    python argus/dashboard.py      # opens http://localhost:8765/
 """
 
 import json
@@ -79,7 +79,7 @@ def _run_discovery() -> None:
     try:
         r = subprocess.run(
             [sys.executable, str(HERE / "discover.py"), "--days", str(REFRESH_DAYS)],
-            cwd=HERE, capture_output=True, text=True, timeout=900,
+            cwd=HERE.parent, capture_output=True, text=True, timeout=900,
         )
         lines = r.stderr.strip().splitlines()
         _refresh["error"] = None if r.returncode == 0 else (lines[-1] if lines else "discovery failed")
@@ -102,9 +102,9 @@ def start_refresh() -> bool:
 # ─── Page ────────────────────────────────────────────────────────────────
 
 
-def _score_pill(score: int) -> str:
-    tier = "hi" if score >= 70 else "mid" if score >= 40 else "lo"
-    return f"<span class='score {tier}'>{score}</span>"
+def _score_bar(score: int) -> str:
+    # the CSS draws a bar filled to --s percent, full at 100 and above
+    return f"<span class='score' style='--s:{score}'>{score}</span>"
 
 
 def _table(ranked_jobs: list[dict], profile: dict | None) -> str:
@@ -118,13 +118,13 @@ def _table(ranked_jobs: list[dict], profile: dict | None) -> str:
         elif j.get("link"):
             act = (
                 f"<a class='apply' href='{escape(j['link'])}' target='_blank' rel='noopener'>Apply</a>"
-                f"<button class='mark' data-id='{escape(j.get('id', ''))}'>&#10003; Applied</button>"
+                f"<button class='mark' data-id='{escape(j.get('id', ''))}'>Mark applied</button>"
             )
         else:
             act = "<span class='muted'>—</span>"
         rows.append(
             f"<tr{' class=done' if applied else ''}>"
-            f"<td class='num'>{_score_pill(j['_score'])}</td>"
+            f"<td>{_score_bar(j['_score'])}</td>"
             f"<td class='title'>{escape(j.get('title', ''))}</td>"
             f"<td>{escape(j.get('company', ''))}</td>"
             f"<td class='muted'>{escape(j.get('location', ''))}</td>"
@@ -134,7 +134,7 @@ def _table(ranked_jobs: list[dict], profile: dict | None) -> str:
         )
     if rows:
         return (
-            "<table><thead><tr><th class='num'>Score</th><th>Role</th><th>Company</th>"
+            "<table><thead><tr><th>Score</th><th>Role</th><th>Company</th>"
             "<th>Location</th><th>Source</th><th>Posted</th><th></th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table>"
         )
@@ -143,7 +143,7 @@ def _table(ranked_jobs: list[dict], profile: dict | None) -> str:
     elif _refresh["running"]:
         msg = "Fetching jobs… the page refreshes itself when the first batch is in."
     else:
-        msg = f"No matches in the last {WINDOW_DAYS} days. Widen the titles with Edit, or press Refresh."
+        msg = f"No matches in the last {WINDOW_DAYS} days. Widen the titles with Edit profile, or press Fetch jobs."
     return f"<p class='empty'>{msg}</p>"
 
 
@@ -156,21 +156,27 @@ def _status_text() -> str:
         when = datetime.fromtimestamp(store.CSV_PATH.stat().st_mtime)
     except FileNotFoundError:
         return "No jobs fetched yet"
-    return f"Updated {when:%Y-%m-%d %H:%M}"
+    return f"Fetched {when:%d %b %H:%M}"
+
+
+def _watching_sentence(p: dict) -> str:
+    """One sentence for the current profile; the most wanted title is bold."""
+    first, *rest = p["titles"]
+    titles = f"<b>{escape(first)}</b>" + "".join(f", {escape(t)}" for t in rest)
+    where = setup.COUNTRIES.get(p["country"], p["country"])
+    if p["locations"]:
+        where = f"{escape(', '.join(p['locations']).title())}, {escape(where)}"
+    remote = ", remote included" if p["remote"] else ""
+    return (
+        f"Watching {titles} in {where}{remote}."
+        f"<small>{len(p['skills'])} skills weighted across {len(config.FEEDS)} feeds.</small>"
+    )
 
 
 def _build_html(ranked_jobs: list[dict], jobs_week: int, apps_week: int) -> str:
     profile = current_profile()
     p = profile or {"titles": [], "country": "US", "remote": True, "skills": [], "locations": []}
-    chips = "".join(
-        f"<span class='chip{' top' if i == 0 else ''}'>{escape(t)}</span>" for i, t in enumerate(p["titles"])
-    )
-    meta = [setup.COUNTRIES.get(p["country"], p["country"])]
-    if p["remote"]:
-        meta.append("remote OK")
-    if p["locations"]:
-        meta.append(", ".join(p["locations"]).title())
-    meta.append(f"{len(p['skills'])} skills · {len(config.FEEDS)} feeds")
+    watching = _watching_sentence(p) if profile else ""
     options = "".join(
         f"<option value='{code}'{' selected' if code == p['country'] else ''}>{escape(name)}</option>"
         for code, name in setup.COUNTRIES.items()
@@ -182,8 +188,9 @@ def _build_html(ranked_jobs: list[dict], jobs_week: int, apps_week: int) -> str:
         "STATUS": escape(_status_text()),
         "HERO_OPEN": "" if profile else "open",
         "PROMPT": escape(cv.PROMPT.strip()),
-        "TITLE_CHIPS": chips,
-        "META": escape(" · ".join(meta)),
+        "WATCHING": watching,
+        "EYES": "<i class='eye'></i>" * len(config.FEEDS),
+        "N_FEEDS": str(len(config.FEEDS)),
         "TITLES": escape(", ".join(p["titles"])),
         "SKILLS": escape(", ".join(p["skills"])),
         "LOCATIONS": escape(", ".join(p["locations"])),

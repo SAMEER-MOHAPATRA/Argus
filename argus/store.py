@@ -10,7 +10,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 # ponytail: this module global IS the persistence seam — tests reassign
 # it to a tmp dir (see tests.py); no protocol/adapters needed
-CSV_PATH = Path("jobs_found.csv")
+CSV_PATH = Path(__file__).resolve().parent.parent / "jobs_found.csv"  # repo root
 
 UTC_FMT = "%Y-%m-%d %H:%M UTC"
 DATE_FMT = "%Y-%m-%d"

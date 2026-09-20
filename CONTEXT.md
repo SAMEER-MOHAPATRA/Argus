@@ -12,7 +12,7 @@
 
 **Profile extraction** — `cv.py` turns pasted text into the five answers. `parse_answers` reads the exact five-line reply to `cv.PROMPT` (the prompt in `docs/profile-prompt.md`, for any chatbot); `extract_profile` is the fallback for a raw CV: dictionary matches for titles, skills, country and cities. `read` tries both, in that order.
 
-**Tracking** — Recording where each `Job` stands. A single `status` column on the job row is the state machine; the dashboard's "✓ Applied" button advances it. Applied jobs leave the Digest. No separate entry point.
+**Tracking** — Recording where each `Job` stands. A single `status` column on the job row is the state machine; the dashboard's "Mark applied" button advances it. Applied jobs leave the Digest. No separate entry point.
 
 **Dashboard** — The local page: paste box, current profile, ranked table. Owns every write endpoint: `POST /profile` (pasted text or form fields → `save_profile`), `POST /refresh`, `POST /applied/<id>`; `GET /status` reports the background fetch. `render() -> str` fills `page.html` from the store; `serve()` runs a `ThreadingHTTPServer` on port 8765, renders fresh per request, and starts a fetch on launch when a profile is set. `save_profile` writes `config.toml`, calls `config.reload()`, copies the weights onto `scoring`, clears unseen jobs (`store.clear_new`) and runs `discover.py` as a subprocess so it reads the new file. Entry points: `Argus.bat` → `dashboard.py`.
 

@@ -18,7 +18,7 @@ Open questions, not yet written. Take them in any order.
 | Topic | The question to answer | Where the code is |
 |---|---|---|
 | The store | How does `jobs_found.csv` work as a database? Why CSV and not SQLite? Where do schema and date formats live? | `store.py` |
-| The dashboard | How does the page get built and served? How does the "✓ Applied" button write back to the store? | `dashboard.py` |
+| The dashboard | How does the page get built and served? How does the "Mark applied" button write back to the store? | `dashboard.py` |
 | Deduplication | How does Argus know it has seen a job before? Why does `extract_job_id` hash short slugs instead of using them? | `discover.py` — `extract_job_id`, `load_seen_ids` |
 | Concurrency | Why do feeds run in threads and not processes? Why does dedup happen after the join and not inside each worker? | `discover.py` — `main`, `process_feed` |
 | Configuration | Why is config split across `config.toml` and `config.py`? What belongs in each? | `config.toml`, `config.py` |

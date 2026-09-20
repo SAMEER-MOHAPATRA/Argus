@@ -27,7 +27,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python discover.py --days 7
+      - run: python argus/discover.py --days 7
 
       # The repo is the store. jobs_found.csv is gitignored so the public
       # template never carries personal data; the Action force-adds it in your

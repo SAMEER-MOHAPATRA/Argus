@@ -16,5 +16,5 @@ if not exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -r requirements.txt
 )
 
-".venv\Scripts\python.exe" dashboard.py
+".venv\Scripts\python.exe" argus\dashboard.py
 if errorlevel 1 pause

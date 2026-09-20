@@ -2,8 +2,9 @@ import tomllib
 from pathlib import Path
 
 
-# anchored to this file, not the cwd: the GitHub Action does not start in the repo root
-CONFIG_PATH = Path(__file__).parent / "config.toml"
+# anchored to the repo root (one folder up from this file), not the cwd: the
+# GitHub Action and the dashboard subprocess do not start in the repo root
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.toml"
 
 ROLE_KEYWORDS: list[str]
 SENIORITY_BLOCK: list[str]

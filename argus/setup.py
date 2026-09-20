@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 from urllib.parse import quote_plus
 
-CONFIG_PATH = Path(__file__).parent / "config.toml"
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.toml"  # repo root
 
 # ISO code -> name used as a location keyword. Google News accepts any code
 # with an English edition (hl=en-XX&gl=XX&ceid=XX:en); this list only feeds
