@@ -259,6 +259,8 @@ def test_suite() -> None:
     assert score_job(job_at(20, location="Remote")) == 20
     assert score_job(job_at(20, location="Pune")) == 0  # no location keyword
     assert score_job(job_at(20, summary="sql python power bi tableau excel etl")) == 25  # 6 skills capped
+    # a fresh, perfect match caps at 100: 50 + 30 + 20 + 25 would be 125
+    assert score_job(job_at(0, title="Data Analyst", location="Remote", summary="sql python power bi tableau excel")) == 100
 
     # --- rank / render: higher score first, ties stay newest-first ---
     window = [full_job("lo_old", 18), full_job("hi", 20, title="Data Analyst"), full_job("lo_new", 16)]

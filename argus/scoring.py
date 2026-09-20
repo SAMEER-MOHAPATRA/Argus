@@ -13,7 +13,7 @@ from config import LOCATION_POINTS, SKILL_CAP, SKILL_KEYWORDS, SKILL_POINT, TITL
 
 
 def score_job(job: dict) -> int:
-    """Points = title match + location match + capped skills + freshness."""
+    """Points = title match + location match + capped skills + freshness, capped at 100."""
     title = job.get("title", "").lower()
     haystack = title + " " + job.get("summary", "").lower() + " " + job.get("location", "").lower()
     pts = 0
@@ -36,7 +36,7 @@ def score_job(job: dict) -> int:
         pts += 25
     elif age.days <= 14:
         pts += 10
-    return pts
+    return min(pts, 100)
 
 
 def rank(jobs: list[dict]) -> list[dict]:
