@@ -29,12 +29,27 @@ jobs:
 
       - run: python argus/discover.py --days 7
 
+      # Upstream ships the example profile. On it, fetch and stop: no data
+      # commit, no digest issue, so the public template stays clean.
+      - name: Is this a user profile?
+        id: profile
+        run: |
+          python - >> "$GITHUB_OUTPUT" <<'EOF'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "argus")
+          import setup
+          text = Path("config.toml").read_text(encoding="utf-8")
+          print("profile=" + str(setup.is_profile(text)).lower())
+          EOF
+
       # The repo is the store. jobs_found.csv is gitignored so the public
       # template never carries personal data; the Action force-adds it in your
       # private copy. Once tracked, `git pull` brings CI results to your laptop,
       # and the daily commit counts as activity, so GitHub does not disable the
       # schedule after 60 quiet days.
       - name: Commit results
+        if: steps.profile.outputs.profile == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -45,6 +60,7 @@ jobs:
       # each run with the ranked table. A comment (which sends a notification)
       # is posted only when discover.py left one: new jobs or feed errors.
       - name: Update digest issue
+        if: steps.profile.outputs.profile == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
