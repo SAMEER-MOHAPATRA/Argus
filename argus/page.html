@@ -5,174 +5,175 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Argus</title>
 <style>
+/* A watchman's ledger. Ochre parchment, sepia ink, the tapered oxblood rules
+   of a monster stat block, and the peacock eyes Hera made of Argus. Two faces
+   that ship with Windows: Harrington (Art Nouveau lettering) for the wordmark
+   and the headline, Palatino Linotype for everything else. No web fonts:
+   nothing leaves this computer. */
 :root {
-  --bg: #f3f4f7; --bg-glow: rgba(67, 97, 238, .10); --card: #ffffff; --text: #14161b;
-  --muted: #6b7280; --line: #e5e7eb; --soft: #f7f8fa; --accent: #3550d6; --accent-ink: #ffffff;
-  --ok: #15803d; --ok-bg: #dcfce7; --mid: #a16207; --mid-bg: #fef3c7; --low: #6b7280; --low-bg: #f1f2f4;
-  --err: #b91c1c; --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 32px -16px rgba(16, 24, 40, .18);
+  --paper: #e9d8b3; --paper-hi: #f2e5c6; --paper-lo: #dcc79a; --field: #f6edd6;
+  --ink: #2a1c12; --muted: #6a5540; --line: #c4ab78;
+  --red: #7d1f1a; --on-red: #f6edd6; --green: #2f5d4f; --gold: #b3861f; --err: #8f1d12;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1015; --bg-glow: rgba(99, 122, 255, .14); --card: #161922; --text: #e8eaf0;
-    --muted: #8b93a5; --line: #262a36; --soft: #1c2029; --accent: #6b82ff; --accent-ink: #0b0e14;
-    --ok: #4ade80; --ok-bg: #12331f; --mid: #fbbf24; --mid-bg: #382a0c; --low: #9aa3b5; --low-bg: #1f2330;
-    --err: #f87171; --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -20px rgba(0, 0, 0, .7);
+    --paper: #141d19; --paper-hi: #1c2823; --paper-lo: #0e1512; --field: #1b2621;
+    --ink: #e9dcbd; --muted: #a4967a; --line: #3a4a42;
+    --red: #c9664f; --on-red: #141d19; --green: #5fa38f; --gold: #d9ad4c; --err: #f09a86;
   }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  margin: 0 auto; padding: 2rem 1rem 5rem; max-width: 74rem; min-height: 100vh;
-  background: radial-gradient(60rem 24rem at 50% -8rem, var(--bg-glow), transparent 70%) var(--bg);
-  color: var(--text);
-  font: 15px/1.55 "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  margin: 0 auto; padding: 1.5rem 1.25rem 5rem; max-width: 72rem; min-height: 100vh;
+  background: radial-gradient(ellipse 120% 90% at 50% 0%, var(--paper-hi) 0%, var(--paper) 50%, var(--paper-lo) 100%) fixed;
+  color: var(--ink);
+  font: 17px/1.6 "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  font-variant-numeric: tabular-nums;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
-.brand { display: flex; align-items: center; gap: .65rem; }
-.brand .mark {
-  width: 2rem; height: 2rem; border-radius: .65rem; display: grid; place-items: center;
-  background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: .95rem;
-}
-h1 { margin: 0; font-size: 1.15rem; font-weight: 650; letter-spacing: -.01em; }
-.status { display: flex; align-items: center; gap: .6rem; color: var(--muted); font-size: .85rem; }
-.pulse { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ok); }
-body[data-refreshing="1"] .pulse { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--shadow); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+p { margin: 0; }
+b { font-weight: 700; }
 .muted { color: var(--muted); }
-.eyebrow { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.display { font-family: Harrington, "Palatino Linotype", Georgia, serif; font-weight: 400; }
 
-/* --- buttons --- */
-button { cursor: pointer; border-radius: .6rem; border: 1px solid transparent; padding: .55rem 1rem; font-weight: 600; font-size: .875rem; transition: filter .15s, border-color .15s, background .15s; }
-button.primary { background: var(--accent); color: var(--accent-ink); }
-button.primary:hover:enabled { filter: brightness(1.08); }
-button.ghost { background: var(--card); border-color: var(--line); }
-button.ghost:hover:enabled { border-color: var(--accent); color: var(--accent); }
-button:disabled { opacity: .55; cursor: default; }
+/* --- masthead: the wordmark, one peacock eye per feed, a tapered rule --- */
+header {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem;
+  margin-bottom: 2.5rem;
+}
+/* the stat-block rule: an oxblood bar that tapers to a point at both ends */
+header::after {
+  content: ""; display: block; height: 6px; background: var(--red);
+  clip-path: polygon(0 50%, 1.2% 0, 98.8% 0, 100% 50%, 98.8% 100%, 1.2% 100%);
+}
+header::after { flex-basis: 100%; margin-top: .5rem; }
+h1 { margin: 0; font-size: 2.6rem; line-height: 1; letter-spacing: .02em; }
+.watch { display: flex; flex-wrap: wrap; align-items: center; gap: 1.1rem; color: var(--muted); font-size: 1rem; }
+.eyes { display: flex; flex-wrap: wrap; gap: .55rem; padding: .25rem; }
+/* a peacock-feather eye: verdigris leaf, gold lens, ink pupil */
+.eye {
+  position: relative; display: block; width: 1.15rem; height: 1.15rem; transform: rotate(45deg);
+  border-radius: 100% 0; background: var(--green); box-shadow: 0 0 0 1px var(--gold);
+}
+.eye::before { content: ""; position: absolute; inset: .24rem; border-radius: inherit; background: var(--gold); }
+.eye::after { content: ""; position: absolute; inset: .4rem; border-radius: 50%; background: var(--ink); }
+body[data-refreshing="1"] .eye { animation: blink 1.8s ease-in-out infinite; }
+.eye:nth-child(2n) { animation-delay: .3s; }
+.eye:nth-child(3n) { animation-delay: .6s; }
+@keyframes blink { 0%, 78%, 100% { transform: scaleY(1) rotate(45deg); } 88% { transform: scaleY(.08) rotate(45deg); } }
+@media (prefers-reduced-motion: reduce) { .eye { animation: none !important; } }
 
-/* --- paste box --- */
-details.hero { padding: 0; margin-bottom: 1.25rem; }
-details.hero > summary { list-style: none; cursor: pointer; padding: 1rem 1.5rem; font-weight: 600; font-size: .9rem; color: var(--muted); }
-details.hero > summary::-webkit-details-marker { display: none; }
-details.hero > summary:hover { color: var(--accent); }
+/* --- buttons: an engraved double line, ink on parchment --- */
+button {
+  cursor: pointer; padding: .5rem 1.1rem; border-radius: .15rem; border: 1px solid var(--ink);
+  background: var(--field); color: var(--ink); font-weight: 700; font-size: .95rem; line-height: 1.3;
+  box-shadow: inset 0 0 0 2px var(--field), inset 0 0 0 3px var(--gold);
+}
+button:hover:enabled { background: var(--ink); color: var(--paper); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--gold); }
+button.primary { background: var(--red); border-color: var(--red); color: var(--on-red); box-shadow: inset 0 0 0 2px var(--red), inset 0 0 0 3px var(--gold); }
+button.primary:hover:enabled { background: var(--ink); border-color: var(--ink); color: var(--paper); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--gold); }
+button.quiet { border-color: transparent; background: transparent; box-shadow: none; font-weight: 400; color: var(--muted); padding-left: .5rem; padding-right: .5rem; }
+button.quiet:hover:enabled { background: transparent; color: var(--ink); text-decoration: underline; box-shadow: none; }
+button:disabled { opacity: .45; cursor: default; }
+
+/* --- profile sentence, with an illuminated first letter --- */
+.profile { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .75rem 2rem; margin-bottom: 1.5rem; }
+body.onboarding .profile { display: none; }
+.who { max-width: 44rem; font-size: 1.2rem; line-height: 1.5; }
+.who::first-letter {
+  float: left; padding: .1em .1em 0 0; font-family: Harrington, Georgia, serif; font-size: 3.1em; line-height: .78; color: var(--red);
+}
+.who small { display: block; margin-top: .35rem; font-size: 1rem; color: var(--muted); }
+form.edit {
+  flex-basis: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem 1.5rem;
+  margin-top: .5rem; padding: 1.5rem 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+form.edit[hidden] { display: none; }
+form.edit label { display: grid; gap: .35rem; font-size: .9rem; color: var(--muted); }
+form.edit input, form.edit select { padding: .5rem .7rem; border-radius: .15rem; border: 1px solid var(--line); background: var(--field); color: var(--ink); }
+form.edit input:focus, form.edit select:focus { border-color: var(--gold); outline: none; }
+form.edit .wide { grid-column: 1 / -1; }
+form.edit .check { display: flex; flex-direction: row; align-items: center; gap: .5rem; align-self: end; padding-bottom: .5rem; }
+form.edit .check input { width: 1rem; height: 1rem; accent-color: var(--red); }
+form.edit .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+
+/* --- the paste box, inside an arched double frame --- */
+details.hero { margin-bottom: 2.5rem; }
+details.hero > summary { cursor: pointer; width: max-content; color: var(--muted); }
+details.hero > summary:hover { color: var(--ink); text-decoration: underline; }
 body.onboarding details.hero > summary { display: none; }
-.hero-body { padding: 2.25rem 1.5rem 1.75rem; }
-body.watching .hero-body { padding-top: .25rem; }
-.hero h2 { margin: 0 0 .5rem; font-size: 1.7rem; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; }
+.hero-body {
+  max-width: 50rem; padding: 2rem 2.25rem 2.25rem; border: 3px double var(--gold);
+  border-radius: 3rem 3rem .25rem .25rem; background: var(--paper-hi);
+}
+body.watching .hero-body { margin-top: 1rem; }
+.hero h2 { margin: 0 0 .75rem; max-width: 20ch; font-size: 3rem; line-height: 1.05; }
 body.watching .hero h2 { display: none; }
-.lead { margin: 0 0 1.5rem; max-width: 40rem; color: var(--muted); }
+.lead { margin: 0 0 1.75rem; max-width: 40rem; font-size: 1.125rem; font-style: italic; color: var(--muted); }
 body.watching .lead { display: none; }
 textarea {
-  width: 100%; min-height: 13rem; resize: vertical; padding: 1rem 1.1rem; border-radius: .8rem;
-  border: 1px solid var(--line); background: var(--soft); line-height: 1.5;
+  display: block; width: 100%; min-height: 14rem; resize: vertical; padding: .9rem 1rem; border-radius: .15rem;
+  border: 1px solid var(--line); background: var(--field); color: var(--ink); line-height: 1.6;
 }
-textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-top: 1rem; }
-.err { color: var(--err); font-size: .875rem; }
+textarea:focus { border-color: var(--gold); outline: none; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1rem; }
+.err { color: var(--err); }
 .err:empty { display: none; }
-details.tip { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: 1rem; }
-details.tip summary { cursor: pointer; font-weight: 600; font-size: .875rem; color: var(--muted); }
-details.tip summary:hover { color: var(--accent); }
-details.tip p { margin: .75rem 0; color: var(--muted); font-size: .875rem; max-width: 44rem; }
+details.tip { margin-top: 1.75rem; }
+details.tip summary { cursor: pointer; width: max-content; color: var(--muted); }
+details.tip summary:hover { color: var(--ink); text-decoration: underline; }
+details.tip p { margin: .75rem 0; color: var(--muted); }
 pre {
-  margin: 0 0 .75rem; padding: 1rem 1.1rem; border-radius: .8rem; background: var(--soft); border: 1px solid var(--line);
-  white-space: pre-wrap; word-break: break-word; font-size: .8rem; line-height: 1.5; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  margin: 0 0 .75rem; padding: .9rem 1rem; border-radius: .15rem; background: var(--field); border: 1px solid var(--line);
+  white-space: pre-wrap; word-break: break-word; font: .875rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
-/* --- profile --- */
-.profile { padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
-body.onboarding .profile { display: none; }
-.profile-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; }
-.chip { padding: .25rem .7rem; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); font-size: .82rem; font-weight: 500; }
-.chip.top { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-.meta { margin-top: .6rem; color: var(--muted); font-size: .85rem; }
-form.edit { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .9rem 1rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
-form.edit[hidden] { display: none; }
-form.edit label { display: grid; gap: .35rem; font-size: .8rem; font-weight: 600; color: var(--muted); }
-form.edit input, form.edit select { padding: .55rem .75rem; border-radius: .6rem; border: 1px solid var(--line); background: var(--soft); font-weight: 400; }
-form.edit .wide { grid-column: 1 / -1; }
-form.edit .check { flex-direction: row; display: flex; align-items: center; gap: .5rem; align-self: end; padding-bottom: .5rem; }
-form.edit .check input { width: 1rem; height: 1rem; accent-color: var(--accent); }
-form.edit .actions { grid-column: 1 / -1; display: flex; gap: .8rem; align-items: center; }
-
-/* --- stats + table --- */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .9rem; margin: 0 0 1rem; }
-body.onboarding .stats { display: none; }
-.stat { padding: 1rem 1.25rem; }
-.stat b { display: block; font-size: 1.8rem; font-weight: 650; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.stat span { font-size: .8rem; color: var(--muted); }
-.table-card { overflow: hidden; }
+/* --- the ledger --- */
+.tally { margin-bottom: 1rem; font-size: 1.2rem; }
+body.onboarding .tally { display: none; }
 .scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 46rem; }
-th, td { padding: .75rem 1rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
-th { background: var(--soft); color: var(--muted); font-weight: 600; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
-tr:last-child td { border-bottom: none; }
-tbody tr:hover td { background: color-mix(in srgb, var(--soft) 60%, transparent); }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.title { font-weight: 550; }
-td.act { white-space: nowrap; text-align: right; }
-.score { display: inline-block; min-width: 2.6rem; padding: .2rem .55rem; border-radius: 999px; font-weight: 650; font-size: .8rem; text-align: center; }
-.score.hi { background: var(--ok-bg); color: var(--ok); }
-.score.mid { background: var(--mid-bg); color: var(--mid); }
-.score.lo { background: var(--low-bg); color: var(--low); }
-a.apply, button.mark { display: inline-block; padding: .35rem .8rem; border-radius: .55rem; font: 600 .8rem/1.4 inherit; }
-a.apply { background: var(--accent); color: var(--accent-ink); text-decoration: none; }
-a.apply:hover { filter: brightness(1.08); }
-button.mark { margin-left: .35rem; border: 1px solid var(--line); background: var(--card); color: var(--text); }
-button.mark:hover:enabled { border-color: var(--accent); color: var(--accent); }
+table { width: 100%; border-collapse: collapse; min-width: 50rem; }
+th, td { padding: .75rem .75rem .75rem 0; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--line); }
+th { padding-top: 0; padding-bottom: .4rem; font-variant-caps: small-caps; letter-spacing: .05em; font-weight: 700; color: var(--red); border-bottom: 2px solid var(--red); }
+td:first-child, th:first-child { padding-right: 1.25rem; }
+td.title { font-weight: 700; }
+td.act { white-space: nowrap; text-align: right; padding-right: 0; }
+/* the score reads as a gold bar filled to the value; score_job caps it at 100 */
+.score { display: inline-grid; grid-template-columns: 4.5rem auto; align-items: center; gap: .6rem; font-weight: 700; }
+.score::before { content: ""; height: .45rem; border: 1px solid var(--muted); background: linear-gradient(90deg, var(--gold) calc(var(--s) * 1%), transparent 0); }
+tr.done .score::before { background: var(--line); border-color: var(--line); }
+a.apply, button.mark { display: inline-block; padding: .3rem .75rem; border-radius: .15rem; font-size: .9rem; font-weight: 700; line-height: 1.3; }
+a.apply { background: var(--red); color: var(--on-red); text-decoration: none; box-shadow: inset 0 0 0 2px var(--red), inset 0 0 0 3px var(--gold); }
+a.apply:hover { background: var(--ink); color: var(--paper); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--gold); }
+button.mark { margin-left: .4rem; }
 tr.done td { color: var(--muted); }
-tr.done td.title { text-decoration: line-through; font-weight: 400; }
-.empty { margin: 0; padding: 3.5rem 1rem; text-align: center; color: var(--muted); }
+tr.done td.title { font-weight: 400; }
+.empty { padding: 3rem 0; color: var(--muted); max-width: 46rem; }
 @media (max-width: 600px) {
-  body { padding-top: 1.25rem; }
-  .hero h2 { font-size: 1.4rem; }
-  .status .label { display: none; }
+  body { padding-top: 1rem; }
+  header { margin-bottom: 1.75rem; }
+  h1 { font-size: 2.2rem; }
+  .hero-body { padding: 1.5rem 1.25rem; border-radius: 2rem 2rem .25rem .25rem; }
+  .hero h2 { font-size: 2.25rem; }
+  .watch #statusText { display: none; }
 }
 </style>
 </head>
 <body class="{{MODE}}" data-refreshing="{{REFRESHING}}">
 <header>
-  <div class="brand"><span class="mark">A</span><h1>Argus</h1></div>
-  <div class="status">
-    <span class="pulse"></span>
-    <span id="statusText" class="label">{{STATUS}}</span>
-    <button id="refresh" class="ghost" {{REFRESH_DISABLED}}>Refresh</button>
+  <h1 class="display">Argus</h1>
+  <div class="watch">
+    <span class="eyes" role="img" aria-label="{{N_FEEDS}} feeds watched" title="{{N_FEEDS}} feeds watched">{{EYES}}</span>
+    <span id="statusText">{{STATUS}}</span>
+    <button id="refresh" {{REFRESH_DISABLED}}>Fetch jobs</button>
   </div>
 </header>
 
-<details class="hero card" {{HERO_OPEN}}>
-  <summary>Paste a new CV</summary>
-  <div class="hero-body">
-    <h2>Paste your CV. Argus does the rest.</h2>
-    <p class="lead">Argus reads your CV, picks the job titles and skills to watch, and fetches matching
-      postings from LinkedIn, Naukri and remote boards. Everything stays on this computer.</p>
-    <textarea id="cvText" placeholder="Paste your CV here, or the five-line answer from the prompt below." spellcheck="false"></textarea>
-    <div class="row">
-      <button id="start" class="primary">Start watching</button>
-      <span id="pasteError" class="err"></span>
-    </div>
-    <details class="tip">
-      <summary>Better titles? Ask any chatbot first</summary>
-      <p>Paste this prompt and your CV into ChatGPT, Claude, Gemini or Copilot. Then paste its five-line
-        answer into the box above instead of the CV. Argus reads both shapes.</p>
-      <pre id="prompt">{{PROMPT}}</pre>
-      <button id="copy" class="ghost">Copy prompt</button>
-    </details>
-  </div>
-</details>
-
-<section class="profile card">
-  <div class="profile-head">
-    <div>
-      <span class="eyebrow">Watching</span>
-      <div class="chips">{{TITLE_CHIPS}}</div>
-      <div class="meta">{{META}}</div>
-    </div>
-    <button id="edit" class="ghost">Edit</button>
-  </div>
+<section class="profile">
+  <p class="who">{{WATCHING}}</p>
+  <button id="edit">Edit profile</button>
   <form id="editForm" class="edit" hidden>
     <label class="wide">Job titles, comma-separated, most wanted first
       <input name="titles" value="{{TITLES}}" required></label>
@@ -184,19 +185,37 @@ tr.done td.title { text-decoration: line-through; font-weight: 400; }
     <label class="wide">Cities or regions, comma-separated
       <input name="locations" value="{{LOCATIONS}}"></label>
     <div class="actions">
-      <button type="submit" class="primary">Save and refresh</button>
-      <button type="button" id="cancel" class="ghost">Cancel</button>
+      <button type="submit" class="primary">Save and fetch</button>
+      <button type="button" id="cancel" class="quiet">Cancel</button>
       <span id="editError" class="err"></span>
     </div>
   </form>
 </section>
 
-<div class="stats">
-  <div class="stat card"><b>{{N_OPEN}}</b><span>Open matches · last {{WINDOW_DAYS}} days</span></div>
-  <div class="stat card"><b>{{N_WEEK}}</b><span>New this week</span></div>
-  <div class="stat card"><b>{{N_APPLIED}}</b><span>Applied this week</span></div>
-</div>
-<div class="card table-card"><div class="scroll">{{TABLE}}</div></div>
+<details class="hero" {{HERO_OPEN}}>
+  <summary>Paste a new CV</summary>
+  <div class="hero-body">
+    <h2 class="display">Paste your CV to start the watch.</h2>
+    <p class="lead">Argus reads it, picks the job titles and skills to watch, and fetches matching
+      postings from LinkedIn, Naukri and the remote boards. Nothing leaves this computer.</p>
+    <textarea id="cvText" placeholder="Your CV, or the five-line answer from the prompt below." spellcheck="false"></textarea>
+    <div class="row">
+      <button id="start" class="primary">Start watching</button>
+      <span id="pasteError" class="err"></span>
+    </div>
+    <details class="tip">
+      <summary>Better titles? Ask a chatbot first</summary>
+      <p>Paste this prompt and your CV into ChatGPT, Claude, Gemini or Copilot. Then paste its five-line
+        answer into the box above instead of the CV. Argus reads both shapes.</p>
+      <pre id="prompt">{{PROMPT}}</pre>
+      <button id="copy">Copy prompt</button>
+    </details>
+  </div>
+</details>
+
+<p class="tally"><b>{{N_OPEN}}</b> open matches from the last {{WINDOW_DAYS}} days,
+  <b>{{N_WEEK}}</b> new this week, <b>{{N_APPLIED}}</b> applied this week.</p>
+<div class="scroll">{{TABLE}}</div>
 
 <script>
 // the server is the only state: every action is one POST, then a reload
